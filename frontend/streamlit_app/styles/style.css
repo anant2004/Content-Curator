@@ -252,11 +252,85 @@ section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
     margin-bottom: 4px !important;
 }
 
-/* Sidebar Select boxes & Inputs */
-section[data-testid="stSidebar"] div[data-baseweb="select"] {
+/* Sidebar Select boxes & Inputs — force light mode (fixes dark/black dropdowns) */
+section[data-testid="stSidebar"] div[data-baseweb="select"],
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div > div {
     border: 1px solid #DCE3EC !important;
     border-radius: 6px !important;
     background-color: #FFFFFF !important;
+    color: #1F2937 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] input,
+section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+section[data-testid="stSidebar"] div[data-baseweb="select"] div[value] {
+    color: #1F2937 !important;
+    background-color: transparent !important;
+    -webkit-text-fill-color: #1F2937 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
+    fill: #4B5563 !important;
+}
+
+/* Sidebar headings — override faint default markdown colors */
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h4,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong {
+    color: #1F2937 !important;
+}
+
+/* Sidebar captions — often invisible in dark-theme bleed */
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] small {
+    color: #374151 !important;
+}
+
+/* Sidebar info/alert boxes */
+section[data-testid="stSidebar"] [data-testid="stAlert"],
+section[data-testid="stSidebar"] [data-testid="stAlert"] p {
+    background-color: #EEF2FF !important;
+    color: #374151 !important;
+    border: 1px solid #C7D2FE !important;
+}
+
+/* Sidebar text color baseline */
+section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    background-color: #FFFFFF !important;
+    color: #1F2937 !important;
+}
+
+/* Selectbox dropdown popover — light menu */
+div[data-baseweb="popover"],
+div[data-baseweb="popover"] > div,
+div[data-baseweb="menu"],
+div[data-baseweb="menu"] ul {
+    background-color: #FFFFFF !important;
+}
+
+div[data-baseweb="menu"] li,
+div[data-baseweb="menu"] li > div {
+    color: #1F2937 !important;
+    background-color: #FFFFFF !important;
+}
+
+div[data-baseweb="menu"] li:hover,
+div[data-baseweb="menu"] li[aria-selected="true"] {
+    background-color: #EEF2FF !important;
+    color: #003B7A !important;
+}
+
+/* Force light color scheme app-wide */
+.stApp,
+[data-testid="stAppViewContainer"] {
+    color-scheme: light !important;
 }
 
 /* ── Welcome Area ────────────────────────────────────────────────────────── */

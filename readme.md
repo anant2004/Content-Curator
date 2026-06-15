@@ -155,5 +155,5 @@ Content-Curator/
 │       ├── schemas/         # Pydantic request/response models
 │       └── utils/           # Logger, file utilities
 └── .streamlit/
-    └── config.toml          # Streamlit configuration
+    └── config.toml          # Streamlit light theme (run app from project root)
 ```
