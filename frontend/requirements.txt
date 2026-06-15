@@ -1,0 +1,9 @@
+streamlit>=1.20.0,<2.0.0
+requests>=2.28.0,<3.0
+pandas>=1.5.0,<2.0
+python-docx>=0.8.11
+openpyxl>=3.0.10
+
+# Optional/extra utilities used by exporters or previews
+# pillow is commonly useful for image handling in Streamlit UIs
+pillow>=9.0.0

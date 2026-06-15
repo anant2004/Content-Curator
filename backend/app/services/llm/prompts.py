@@ -10,12 +10,15 @@ Think about:
 - slide variety
 - visual opportunities
 
+CRITICAL RULE: You MUST generate EXACTLY the number of slides requested.
+The "outline" array length MUST equal the requested slide count. Never more, never less.
+
 Return only valid JSON.
 No markdown."""
 
 OUTLINE_USER = """Create a slide presentation outline from the following source content.
 
-Target slides: {num_slides}
+SLIDE COUNT: {num_slides} slides — YOU MUST GENERATE EXACTLY {num_slides} slides.
 Audience: {audience}
 Tone: {tone}
 Focus: {focus}
@@ -23,7 +26,7 @@ Focus: {focus}
 SOURCE CONTENT:
 {content}
 
-Respond with this exact JSON structure:
+Respond with this exact JSON structure (the "outline" array MUST have EXACTLY {num_slides} items):
 {{
   "title": "Presentation title here",
   "outline": [
@@ -37,6 +40,7 @@ Respond with this exact JSON structure:
 }}
 
 Rules:
+- The outline array MUST contain EXACTLY {num_slides} items. Count them before responding.
 - First slide must be a title/overview slide
 - Last slide must be a conclusion/next steps slide
 - Each slide should have 3-5 key points

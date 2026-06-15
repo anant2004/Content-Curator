@@ -2,9 +2,9 @@
 Export Bar Component
 
 Renders export section with:
-- Export format buttons (PDF, Word, PPT, etc.)
-- Download handlers
-- Refinement/improvement suggestions
+- Export format buttons (PPTX, PDF)
+- Download handlers (2-step: POST export → GET binary)
+- Refinement / improvement suggestions (local only — no backend refine endpoint yet)
 """
 
 import streamlit as st
@@ -16,42 +16,53 @@ from streamlit_app.config import IMPROVEMENT_SUGGESTIONS
 def render_export_bar():
     """Render the export bar component."""
     active_asset = state.get_active_asset()
-    
+
     if not active_asset["type"] or not active_asset["data"]:
         st.info("Generate content first to export")
         return
-    
+
     st.markdown("### 📥 Export & Refine")
-    
-    # Export Options
+
+    asset_data = active_asset["data"]
+    slides = state.get_generated_slides()
+    title = state.get_presentation_title() or asset_data.get("title", "Presentation")
+    session_id = state.get_session_id() or asset_data.get("id", "unknown")
+
+    # ── Export section ──────────────────────────────────────────────
     st.markdown("#### Export Formats")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    export_formats = ["PDF", "Word", "PowerPoint", "Excel"]
-    
+
+    # Backend only supports PPTX and PDF — show those as primary
+    col1, col2 = st.columns(2)
+
     with col1:
-        if st.button("📄 PDF", use_container_width=True):
-            _handle_export(active_asset, "pdf")
-    
+        if st.button("🎯 PowerPoint (.pptx)", use_container_width=True, type="primary"):
+            _handle_export(session_id, title, slides, "pptx")
+
     with col2:
-        if st.button("📝 Word", use_container_width=True):
-            _handle_export(active_asset, "docx")
-    
-    with col3:
-        if st.button("🎯 PowerPoint", use_container_width=True):
-            _handle_export(active_asset, "pptx")
-    
-    with col4:
-        if st.button("📊 Excel", use_container_width=True):
-            _handle_export(active_asset, "xlsx")
-    
-    # Divider
+        if st.button("📄 PDF", use_container_width=True):
+            _handle_export(session_id, title, slides, "pdf")
+
+    # Theme selector
+    theme = st.selectbox(
+        "Slide theme",
+        [
+            "midnight_executive",
+            "forest_moss",
+            "coral_energy",
+            "charcoal_minimal",
+        ],
+        key="export_theme",
+    )
+    # Store theme choice so _handle_export can read it
+    st.session_state._export_theme = theme
+
     st.divider()
-    
-    # Refinement Section
+
+    # ── Refinement section (local — no backend endpoint) ────────────
     st.markdown("#### Refine Content")
+    st.caption("Improvements are saved locally and sent on the next export.")
     st.markdown("**Suggested Improvements:**")
-    
+
     for suggestion in IMPROVEMENT_SUGGESTIONS:
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -60,72 +71,108 @@ def render_export_bar():
             if st.button("✓", key=f"improve_{suggestion}", use_container_width=True):
                 state.add_improvement(
                     improvement_id=suggestion.replace(" ", "_"),
-                    improvement_text=suggestion
+                    improvement_text=suggestion,
                 )
-                st.success("Improvement applied!")
+                st.success("Improvement noted!")
                 st.rerun()
-    
-    # Custom Refinement
+
+    # Custom refinement
     st.markdown("**Custom Request:**")
     custom_request = st.text_area(
         "Enter custom refinement...",
         placeholder="e.g., Make it more executive-focused...",
         height=60,
-        key="custom_refinement"
+        key="custom_refinement",
     )
-    
-    if st.button("🔄 Apply Refinement", use_container_width=True):
+
+    if st.button("🔄 Save Refinement", use_container_width=True):
         if custom_request.strip():
             state.add_improvement(
                 improvement_id="custom",
-                improvement_text=custom_request
+                improvement_text=custom_request,
             )
-            st.success("Refinement applied!")
+            st.success("Refinement saved — will apply on next generation.")
             st.rerun()
         else:
             st.warning("Please enter a refinement request")
 
 
-def _handle_export(active_asset: dict, format_type: str):
+# ── Export handler ──────────────────────────────────────────────────────
+
+
+def _handle_export(
+    session_id: str,
+    presentation_title: str,
+    slides: list,
+    format_type: str,
+):
     """
-    Handle export action.
-    
+    Export slides via the backend and offer the file as a download.
+
+    Two-step process:
+      1. POST /api/v1/export/           → metadata {download_url, filename}
+      2. GET  /api/v1/export/download/{filename} → binary bytes
+
     Args:
-        active_asset: Current active asset
-        format_type: Export format (pdf, docx, etc.)
+        session_id:           Current ingest/generation session
+        presentation_title:   Title of the presentation
+        slides:               List of SlideContent dicts
+        format_type:          "pptx" or "pdf"
     """
+    if state.is_mock_mode():
+        st.warning("Export is not available in mock mode. Start the backend and disable mock mode.")
+        return
+
+    if not slides:
+        st.error("No slides to export. Generate content first.")
+        return
+
+    theme = st.session_state.get("_export_theme", "midnight_executive")
+
     try:
-        api_client = get_api_client()
-        asset_type = active_asset["type"]
-        asset_data = active_asset["data"]
-        
-        response = api_client.export_asset(
-            asset_id=asset_data.get("id", "asset"),
-            format_type=format_type,
-            asset_data=asset_data
-        )
-        
-        if "error" not in response and "file_data" in response:
+        api = get_api_client()
+
+        with st.spinner(f"📦 Building {format_type.upper()} file…"):
+            file_bytes = api.export_presentation(
+                session_id=session_id,
+                presentation_title=presentation_title,
+                slides=slides,
+                format=format_type,
+                theme=theme,
+            )
+
+        if file_bytes:
+            mime = _get_mime_type(format_type)
+            filename = f"{_slugify(presentation_title)}.{format_type}"
+
             st.download_button(
                 label=f"⬇️ Download {format_type.upper()}",
-                data=response["file_data"],
-                file_name=f"{asset_type}.{format_type}",
-                mime=_get_mime_type(format_type)
+                data=file_bytes,
+                file_name=filename,
+                mime=mime,
+                key=f"dl_{format_type}_{session_id}",
             )
-            st.success(f"✓ Ready to download as {format_type.upper()}")
+            st.success(f"✓ {format_type.upper()} ready — click the button above to download.")
         else:
-            st.error(f"Export failed: {response.get('error', 'Unknown error')}")
-    
+            st.error("Export failed — the backend returned no file data.")
+
     except Exception as e:
-        st.error(f"Export error: {str(e)}")
+        st.error(f"Export error: {e}")
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
 
 
 def _get_mime_type(format_type: str) -> str:
-    """Get MIME type for format."""
+    """Return the MIME type for a given export format."""
     mime_types = {
-        "pdf": "application/pdf",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pdf": "application/pdf",
     }
     return mime_types.get(format_type, "application/octet-stream")
+
+
+def _slugify(text: str) -> str:
+    """Convert a title to a safe filename."""
+    import re
+    return re.sub(r"[^\w\-]", "_", text.lower())[:60]

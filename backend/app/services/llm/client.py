@@ -1,16 +1,20 @@
 import json
+import asyncio
 import httpx
 from typing import Optional
 from backend.app.config import settings
 from backend.app.utils.logger import logger
 
+# ── Rate-limit retry config ───────────────────────────────────────────────────
+_MAX_RETRIES = 5
+_BASE_BACKOFF = 5.0  # seconds; doubles each retry: 5 → 10 → 20 → 40 → 80
+
 
 class OpenRouterClient:
-    """Thin async wrapper around OpenRouter's OpenAI-compatible API."""
-
-    BASE_URL = "https://openrouter.ai/api/v1"
+    """Async wrapper around any OpenAI-compatible API (OpenRouter, Gemini, etc.)."""
 
     def __init__(self):
+        self.base_url = settings.openrouter_base_url.rstrip("/")
         self.api_key = settings.openrouter_api_key
         self.model = settings.openrouter_model
         self.headers = {
@@ -36,56 +40,111 @@ class OpenRouterClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "response_format" : {
-                "type": "json_object"
-            }
+            "response_format": {"type": "json_object"},
         }
 
         logger.debug(f"Calling OpenRouter model={self.model}")
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.BASE_URL}/chat/completions",
-                headers=self.headers,
-                json=payload,
-            )
+        for attempt in range(1, _MAX_RETRIES + 1):
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                )
 
-        if response.status_code != 200:
+            if response.status_code == 200:
+                break  # success — exit retry loop
+
+            if response.status_code in (429, 503):
+                if attempt == _MAX_RETRIES:
+                    raise RuntimeError(
+                        f"LLM API rate limited after {_MAX_RETRIES} retries: "
+                        f"{response.text[:200]}"
+                    )
+                # Honour Retry-After if provided, else use exponential backoff
+                retry_after = response.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else _BASE_BACKOFF * (2 ** (attempt - 1))
+                logger.warning(
+                    f"Rate limited (HTTP {response.status_code}) — "
+                    f"attempt {attempt}/{_MAX_RETRIES}, retrying in {wait:.0f}s"
+                )
+                await asyncio.sleep(wait)
+                continue
+
+            # Any other non-200 is a hard failure — don't retry
             logger.error(f"OpenRouter error {response.status_code}: {response.text}")
             raise RuntimeError(
                 f"LLM API error {response.status_code}: {response.text[:200]}"
             )
 
         data = response.json()
-        #print("This is the raw data",data)
         content = data["choices"][0]["message"]["content"]
-        print("==========JSON DATA===============")
-        print(content)
-        print("==========JSON DATA ENDS===============")
+        print("=================JSON RESPONSE=====================")
+        try:
+            print(json.dumps(json.loads(content), indent=2))
+        except Exception:
+            print(content)  # fallback: print raw if not valid JSON
+        print("=================JSON RESPONSE END=====================")
         if content is None:
             raise ValueError("LLM returned empty response")
         logger.debug(f"LLM response length: {len(content)} chars")
         return content
 
+
     async def chat_json(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        max_tokens: int = 6000,
-        temperature: float = 0.5,
-    ) -> dict:
+    self,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 6000,
+    temperature: float = 0.5,
+) -> dict:
         raw = await self.chat(system_prompt, user_prompt, max_tokens, temperature)
-        # Strip ```json ... ``` fences
+
+        if not raw:
+            logger.error("LLM returned empty response")
+            raise ValueError("LLM returned empty response")
+
         cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.splitlines()
-            cleaned = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
         try:
+        # Remove markdown code fences
+            if cleaned.startswith("```"):
+                cleaned = cleaned.replace("```json", "")
+                cleaned = cleaned.replace("```", "")
+                cleaned = cleaned.strip()
+
+            # Find JSON boundaries
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+
+            if start == -1 or end == -1:
+                logger.error(f"No JSON object found in LLM response:\n{raw[:500]}")
+                raise ValueError("No JSON object found")
+
+            # Keep only JSON part
+            cleaned = cleaned[start : end + 1]
+
+            # Remove common LLM garbage after JSON
+            garbage_patterns = [
+                "</</</",
+                "</",
+                "###",
+            ]
+
+            for pattern in garbage_patterns:
+                cleaned = cleaned.replace(pattern, "")
+
+            cleaned = cleaned.strip()
+
             return json.loads(cleaned)
+
         except json.JSONDecodeError as e:
-            #print("RAW LLM RESPONSE:")
-            #print(cleaned)
-            logger.error(f"Failed to parse LLM JSON: {e}\nRaw: {raw[:500]}")
+            logger.error(
+                f"Failed to parse LLM JSON: {e}\n"
+                f"Cleaned response:\n{cleaned[:1000]}\n"
+                f"Raw response:\n{raw[:1000]}"
+            )
             raise ValueError(f"LLM returned invalid JSON: {e}") from e
 
 

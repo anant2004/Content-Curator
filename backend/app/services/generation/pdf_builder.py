@@ -108,10 +108,25 @@ def _build_with_reportlab(
 
     story = []
     for slide in slides:
+        # Slide title
         story.append(Paragraph(slide.title, title_style))
         story.append(Spacer(1, 0.1 * inch))
-        for bullet in slide.bullets:
-            story.append(Paragraph(f"• {bullet}", bullet_style))
+
+        # Fix 3: Prefer elements[] (what the LLM actually fills in),
+        # fall back to bullets[] for backwards compat.
+        if slide.elements:
+            for element in slide.elements:
+                if element.type == "text" and element.content.strip() != slide.title.strip():
+                    story.append(Paragraph(element.content, bullet_style))
+                elif element.type == "image":
+                    # Real image embedding not supported — show a placeholder note
+                    story.append(
+                        Paragraph(f"[Image: {element.content}]", notes_style)
+                    )
+        elif slide.bullets:
+            for bullet in slide.bullets:
+                story.append(Paragraph(f"\u2022 {bullet}", bullet_style))
+
         if slide.speaker_notes:
             story.append(Spacer(1, 0.15 * inch))
             story.append(Paragraph(f"Notes: {slide.speaker_notes}", notes_style))

@@ -43,6 +43,10 @@ class SlideContent(BaseModel):
     background_style: Optional[str] = "light"
     accent: Optional[str] = None
 
+    # Generation status — set to True if LLM failed to generate this slide
+    failed: bool = False
+    error_message: Optional[str] = None
+
 
 class SlideUpdateRequest(BaseModel):
     session_id: str

@@ -6,7 +6,7 @@ from backend.app.schemas.slide import SlideContent
 class ExportRequest(BaseModel):
     session_id: str
     presentation_title: str
-    slides: List[SlideContent]
+    slides: Optional[List[SlideContent]] = None
     format: str = Field(default="pptx", description="Export format: pptx | pdf")
     theme: Optional[str] = Field(
         default="midnight_executive",

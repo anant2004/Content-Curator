@@ -17,16 +17,17 @@ from streamlit_app.config import (
     SUGGESTED_ACTIONS,
 )
 from streamlit_app import state
+from streamlit_app.api_client import get_api_client
 
 
 def render_sidebar():
     """Render the sidebar component."""
     with st.sidebar:
-        st.markdown(
-            '<span class="sidebar-section-title">⚙️ Content Configuration</span>',
-            unsafe_allow_html=True,
-        )
 
+        # ── Backend Status ──────────────────────────────────────
+        _render_backend_status()
+
+        st.markdown("### ⚙️ Content Configuration")
         # Domain Selector
         st.session_state.selected_domain = st.selectbox(
             "Select Domain",
@@ -95,8 +96,37 @@ def render_sidebar():
                 st.session_state.current_prompt = action["prompt"]
                 st.session_state.selected_output_type = action["outputType"]
                 st.rerun()
+        
+        # Advanced Options moved to prompt bar
+        st.info("💡 Tip: Advanced options (compliance frameworks, style templates) are in the Generate section below.")
 
-        st.info(
-            "Advanced options (compliance frameworks, style templates) "
-            "are in the Generate section below."
-        )
+
+def _render_backend_status():
+    """
+    Show backend health status and a mock-mode toggle at the top of the sidebar.
+
+    - Runs a health check on every render (cached by @st.cache_resource on the client).
+    - Displays 🟢 / 🔴 so the user knows whether the backend is running.
+    - Provides a toggle to switch to mock mode when the backend is unavailable.
+    """
+    api = get_api_client()
+    is_live = api.health_check()
+    state.set_backend_status(is_live)
+
+    if is_live:
+        st.success("🟢 Backend connected — live mode")
+    else:
+        st.error("🔴 Backend offline")
+        st.caption("Start the backend with:\n```\nuvicorn backend.app.main:app --reload\n```")
+
+    # Mock mode toggle
+    use_mock = st.toggle(
+        "Use mock data (offline mode)",
+        value=st.session_state.get("use_mock_data", False),
+        key="mock_toggle",
+        help="When enabled, the frontend uses built-in mock data instead of calling the backend.",
+    )
+    st.session_state.use_mock_data = use_mock
+
+    st.divider()
+

@@ -8,16 +8,15 @@ from backend.app.schemas.generation import (
 from backend.app.services.llm.outline_generator import generate_outline
 from backend.app.services.llm.slide_generator import generate_slides
 from backend.app.services.ingestion.session_store import session_store
+from backend.app.services.generation.presentation_store import presentation_store
 from backend.app.utils.logger import logger
 
 router = APIRouter(prefix="/generate", tags=["Generation"])
 
-# In-memory presentation store
-_presentation_store: dict[str, GenerationResponse] = {}
-
 
 def get_presentation_store():
-    return _presentation_store
+    """Return the file-backed presentation store (used by export & slides routes)."""
+    return presentation_store
 
 
 @router.post("/outline", response_model=OutlineResponse)
@@ -48,7 +47,6 @@ async def create_outline(
 @router.post("/slides", response_model=GenerationResponse)
 async def create_slides(
     req: GenerationRequest,
-    pres_store: dict = Depends(get_presentation_store),
 ):
     """Generate full slide content (outline + per-slide) from ingested content."""
     content_obj = session_store.get(req.session_id)
@@ -81,18 +79,24 @@ async def create_slides(
         slides=slides,
         total_slides=len(slides),
     )
-    pres_store[req.session_id] = result
-    logger.info(f"Generated {len(slides)} slides for session={req.session_id}")
+    presentation_store.set(req.session_id, result)
+    logger.info(f"Generated {len(slides)} slides for session={req.session_id} — saved to presentations.json")
     return result
 
 
 @router.get("/slides/{session_id}", response_model=GenerationResponse)
 async def get_slides(
     session_id: str,
-    pres_store: dict = Depends(get_presentation_store),
 ):
-    """Retrieve previously generated slides."""
-    result = pres_store.get(session_id)
+    """Retrieve previously generated slides (reads from presentations.json)."""
+    result = presentation_store.get(session_id)
     if not result:
         raise HTTPException(404, f"No slides found for session {session_id}.")
     return result
+
+
+@router.delete("/slides/{session_id}", status_code=204)
+async def delete_slides(session_id: str):
+    """Delete stored slides for a session from presentations.json."""
+    presentation_store.delete(session_id)
+    logger.info(f"Deleted slides for session={session_id} from presentations.json")

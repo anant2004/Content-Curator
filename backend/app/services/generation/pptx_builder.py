@@ -1,10 +1,10 @@
-from pathlib import Path
 from typing import List
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
 
 from backend.app.schemas.slide import SlideContent
 from backend.app.utils.file_utils import generate_temp_path
@@ -13,25 +13,55 @@ SLIDE_W = Inches(13.33)
 SLIDE_H = Inches(7.5)
 
 
-def add_text(
-    slide, text, x, y, w, h, size=20, bold=False, color=RGBColor(0, 0, 0), align="left"
-):
+# ----------------------------
+# Helpers
+# ----------------------------
 
-    # Fix LLM generated array values
-    if isinstance(size, list):
-        size = size[0] if size else 20
+
+def pct(value, total):
+    """
+    Convert LLM percentage coordinates (0-100)
+    into pptx units.
+    """
+    return total * value / 100
+
+
+def hex_to_rgb(hex_color):
+
+    if not hex_color:
+        return RGBColor(0, 0, 0)
+
+    hex_color = hex_color.replace("#", "")
+
+    return RGBColor(
+        int(hex_color[0:2], 16),
+        int(hex_color[2:4], 16),
+        int(hex_color[4:6], 16),
+    )
+
+
+def add_text_element(slide, element, default_color):
+
+    x = pct(element.x, SLIDE_W)
+    y = pct(element.y, SLIDE_H)
+
+    w = pct(element.width, SLIDE_W)
+    h = pct(element.height, SLIDE_H)
 
     box = slide.shapes.add_textbox(x, y, w, h)
 
     tf = box.text_frame
     tf.word_wrap = True
+    tf.clear()
 
     p = tf.paragraphs[0]
 
-    if align == "center":
+    alignment = getattr(element, "alignment", "left")
+
+    if alignment == "center":
         p.alignment = PP_ALIGN.CENTER
 
-    elif align == "right":
+    elif alignment == "right":
         p.alignment = PP_ALIGN.RIGHT
 
     else:
@@ -39,24 +69,60 @@ def add_text(
 
     run = p.add_run()
 
-    run.text = text
+    run.text = element.content or ""
+
+    size = getattr(element, "font_size", 20)
+
+    if isinstance(size, list):
+        size = size[0]
+
     run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.color.rgb = color
+
+    run.font.bold = getattr(element, "bold", False)
+
+    run.font.color.rgb = default_color
 
     return box
 
 
-def set_background(slide, style):
+def add_image_placeholder(slide, element):
+
+    x = pct(element.x, SLIDE_W)
+    y = pct(element.y, SLIDE_H)
+
+    w = pct(element.width, SLIDE_W)
+    h = pct(element.height, SLIDE_H)
+
+    shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
+
+    shape.text = "IMAGE\n\n" + str(element.content)
+
+    shape.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+
+# ----------------------------
+# Background
+# ----------------------------
+
+
+def apply_background(slide, slide_data):
 
     fill = slide.background.fill
     fill.solid()
 
-    if style == "dark":
-        fill.fore_color.rgb = RGBColor(30, 39, 97)
+    color = "#FFFFFF"
 
-    else:
-        fill.fore_color.rgb = RGBColor(255, 255, 255)
+    if hasattr(slide_data, "background"):
+
+        if slide_data.background:
+            color = getattr(slide_data.background, "color", "#FFFFFF")
+
+    fill.fore_color.rgb = hex_to_rgb(color)
+
+
+# ----------------------------
+# Main Builder
+# ----------------------------
 
 
 def build_pptx(
@@ -74,127 +140,89 @@ def build_pptx(
 
         slide = prs.slides.add_slide(blank)
 
-        set_background(slide, s.background_style)
-
-        title_color = (
-            RGBColor(255, 255, 255)
-            if s.background_style == "dark"
-            else RGBColor(30, 39, 97)
-        )
-
-        body_color = (
-            RGBColor(255, 255, 255)
-            if s.background_style == "dark"
-            else RGBColor(40, 40, 40)
-        )
-
-        # title
-
-        add_text(
-            slide,
-            s.title,
-            Inches(0.5),
-            Inches(0.3),
-            Inches(12),
-            Inches(0.8),
-            s.title_size,
-            True,
-            title_color,
-            s.alignment,
-        )
+        apply_background(slide, s)
 
         #
-        # Layout decided by LLM
+        # Theme colors
         #
 
-        if s.layout == "title_only":
+        title_color = RGBColor(17, 17, 17)
 
-            continue
+        body_color = RGBColor(50, 50, 50)
 
-        elif s.layout == "big_stat":
+        #
+        # NEW SYSTEM:
+        # Render LLM elements directly
+        #
 
-            add_text(
-                slide,
-                s.bullets[0] if s.bullets else "",
-                Inches(1),
-                Inches(2),
-                Inches(11),
-                Inches(1),
-                48,
-                True,
-                title_color,
-                "center",
-            )
+        elements = getattr(s, "elements", [])
 
-        elif s.layout == "two_column":
+        if elements:
 
-            half = Inches(6)
+            for element in elements:
 
-            mid = len(s.bullets) // 2
+                if element.type == "text":
 
-            left = "\n".join("• " + x for x in s.bullets[:mid])
+                    add_text_element(slide, element, body_color)
 
-            right = "\n".join("• " + x for x in s.bullets[mid:])
+                elif element.type == "image":
 
-            add_text(
-                slide,
-                left,
-                Inches(0.7),
-                Inches(1.5),
-                half,
-                Inches(5),
-                s.body_size,
-                False,
-                body_color,
-            )
+                    add_image_placeholder(slide, element)
 
-            add_text(
-                slide,
-                right,
-                Inches(7),
-                Inches(1.5),
-                half,
-                Inches(5),
-                s.body_size,
-                False,
-                body_color,
-            )
+        #
+        # FALLBACK:
+        # Old bullet schema
+        #
 
         else:
 
-            bullets = "\n\n".join("• " + b for b in s.bullets)
-
-            add_text(
+            add_text_element(
                 slide,
-                bullets,
-                Inches(0.8),
-                Inches(1.5),
-                Inches(11.5),
-                Inches(4),
-                s.body_size,
-                False,
-                body_color,
+                type(
+                    "obj",
+                    (),
+                    {
+                        "x": 5,
+                        "y": 5,
+                        "width": 90,
+                        "height": 15,
+                        "content": s.title,
+                        "font_size": getattr(s, "title_size", 32),
+                        "bold": True,
+                        "alignment": "center",
+                    },
+                )(),
+                title_color,
             )
 
-        # visual placeholder
+            if s.bullets:
 
-        if s.visual_suggestion:
+                bullets = "\n".join("• " + b for b in s.bullets)
 
-            add_text(
-                slide,
-                "Visual:\n" + s.visual_suggestion,
-                Inches(9),
-                Inches(5.8),
-                Inches(3),
-                Inches(0.7),
-                10,
-                False,
-                body_color,
-            )
+                add_text_element(
+                    slide,
+                    type(
+                        "obj",
+                        (),
+                        {
+                            "x": 10,
+                            "y": 30,
+                            "width": 80,
+                            "height": 50,
+                            "content": bullets,
+                            "font_size": getattr(s, "body_size", 20),
+                            "bold": False,
+                            "alignment": "left",
+                        },
+                    )(),
+                    body_color,
+                )
 
-        # notes
+        #
+        # Speaker notes
+        #
 
-        if s.speaker_notes:
+        if getattr(s, "speaker_notes", None):
 
             slide.notes_slide.notes_text_frame.text = s.speaker_notes
 

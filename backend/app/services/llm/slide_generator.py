@@ -1,6 +1,7 @@
 import json
 import asyncio
 from typing import List
+from string import Template
 from backend.app.services.llm.client import llm_client
 from backend.app.services.llm.prompts import (
     SLIDE_SYSTEM,
@@ -12,7 +13,7 @@ from backend.app.schemas.slide import SlideContent
 from backend.app.schemas.generation import OutlineItem
 from backend.app.utils.logger import logger
 
-CONCURRENCY = 3  # Generate N slides at a time to avoid rate limits
+INTER_SLIDE_DELAY = 2.0  # seconds between requests — reduces rate limit pressure
 
 
 async def _generate_single_slide(
@@ -22,7 +23,7 @@ async def _generate_single_slide(
     tone: str,
     source_excerpt: str,
 ) -> SlideContent:
-    user_prompt = SLIDE_USER.format(
+    user_prompt = Template(SLIDE_USER).substitute(
         presentation_title=presentation_title,
         audience=audience,
         tone=tone,
@@ -35,16 +36,29 @@ async def _generate_single_slide(
     data = await llm_client.chat_json(
         system_prompt=SLIDE_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=2000,
+        max_tokens=3000,
         temperature=0.4,
     )
 
     slide = SlideContent(**data)
 
+    # Fix 1: Never trust the LLM for slide_number — always force the correct value
+    slide.slide_number = outline_item.slide_number
+
+    # Fix 2 & 4: Back-fill bullets from elements[] so pdf_builder has content.
+    # Skip image elements (fake filenames) and the title element itself.
+    if not slide.bullets and slide.elements:
+        slide.bullets = [
+            e.content
+            for e in slide.elements
+            if e.type == "text" and e.content.strip() != slide.title.strip()
+        ][:5]
+
     logger.info(f"""
     Generated Slide {slide.slide_number}
     Title: {slide.title}
     Layout: {slide.layout}
+    Bullets: {len(slide.bullets)}
     Visual: {slide.visual_suggestion}
     """)
 
@@ -58,31 +72,71 @@ async def generate_slides(
     audience: str = "general",
     tone: str = "professional",
 ) -> List[SlideContent]:
-    """Generate all slide contents from outline items, with limited concurrency."""
-    semaphore = asyncio.Semaphore(CONCURRENCY)
+    """Generate all slide contents sequentially with a two-pass retry strategy.
+
+    1. First pass: attempt every slide with a small delay between requests.
+    2. Retry pass: any slide that failed gets one more attempt.
+    3. Slides that fail both passes are returned with failed=True.
+    """
     excerpt = source_content[:4000]
 
-    async def guarded(item: OutlineItem) -> SlideContent:
-        async with semaphore:
+    def _placeholder(item: OutlineItem, error: str) -> SlideContent:
+        return SlideContent(
+            slide_number=item.slide_number,
+            title=item.title,
+            bullets=item.key_points[:5],
+            speaker_notes="",
+            layout="bullets",
+            visual_suggestion=None,
+            failed=True,
+            error_message=str(error),
+        )
+
+    # ── First pass ────────────────────────────────────────────────
+    slides: list[SlideContent] = []
+    failed_items: list[OutlineItem] = []
+
+    for i, item in enumerate(outline_items):
+        if i > 0:
+            logger.debug(f"Waiting {INTER_SLIDE_DELAY}s before slide {item.slide_number}")
+            await asyncio.sleep(INTER_SLIDE_DELAY)
+        try:
+            slide = await _generate_single_slide(
+                item, presentation_title, audience, tone, excerpt
+            )
+            slides.append(slide)
+        except Exception as e:
+            logger.warning(f"Slide {item.slide_number} failed on first pass: {e} — will retry")
+            slides.append(_placeholder(item, e))
+            failed_items.append(item)
+
+    # ── Retry pass ────────────────────────────────────────────────
+    if failed_items:
+        logger.info(
+            f"Retrying {len(failed_items)} failed slide(s): "
+            f"{[i.slide_number for i in failed_items]}"
+        )
+        for item in failed_items:
+            await asyncio.sleep(INTER_SLIDE_DELAY)
             try:
-                return await _generate_single_slide(
+                slide = await _generate_single_slide(
                     item, presentation_title, audience, tone, excerpt
                 )
+                for idx, s in enumerate(slides):
+                    if s.slide_number == item.slide_number:
+                        slides[idx] = slide
+                        break
+                logger.info(f"Slide {item.slide_number} recovered on retry ✓")
             except Exception as e:
-                logger.error(f"Failed to generate slide {item.slide_number}: {e}")
-                # Return a placeholder slide on error
-                return SlideContent(
-                    slide_number=item.slide_number,
-                    title=item.title,
-                    bullets=item.key_points[:5],
-                    speaker_notes="",
-                    layout="bullets",
-                    visual_suggestion=None,
-                    design_notes=None,
+                logger.error(
+                    f"Slide {item.slide_number} failed again on retry: {e} — "
+                    f"keeping as failed placeholder"
                 )
 
-    tasks = [guarded(item) for item in outline_items]
-    slides = await asyncio.gather(*tasks)
+    failed_count = sum(1 for s in slides if s.failed)
+    if failed_count:
+        logger.warning(f"{failed_count} slide(s) could not be generated after retry.")
+
     return sorted(slides, key=lambda s: s.slide_number)
 
 
@@ -91,7 +145,7 @@ async def edit_slide(
     instruction: str,
 ) -> SlideContent:
     """Edit a single slide based on a natural language instruction."""
-    user_prompt = SLIDE_EDIT_USER.format(
+    user_prompt = Template(SLIDE_EDIT_USER).substitute(
         instruction=instruction,
         current_slide_json=json.dumps(current_slide.model_dump(), indent=2),
         slide_number=current_slide.slide_number,

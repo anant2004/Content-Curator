@@ -7,6 +7,7 @@ for maintaining global state across app reruns.
 
 import streamlit as st
 from datetime import datetime
+from typing import Optional
 
 
 def init_session_state():
@@ -68,6 +69,32 @@ def init_session_state():
     if "selected_sample_template" not in st.session_state:
         st.session_state.selected_sample_template = None
 
+    # ── Backend integration state ─────────────────────────────────────
+
+    # session_id is returned by the ingest step and passed to generate/export
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = None
+
+    # Raw slides list returned by POST /api/v1/generate/slides
+    if "generated_slides" not in st.session_state:
+        st.session_state.generated_slides = []
+
+    # presentation_title from the generation response
+    if "presentation_title" not in st.session_state:
+        st.session_state.presentation_title = ""
+
+    # Short text preview shown after a successful ingest
+    if "ingested_preview" not in st.session_state:
+        st.session_state.ingested_preview = ""
+
+    # Whether the live backend is reachable
+    if "backend_available" not in st.session_state:
+        st.session_state.backend_available = False
+
+    # Toggle: when True the frontend uses mock data instead of calling the backend
+    if "use_mock_data" not in st.session_state:
+        st.session_state.use_mock_data = False
+
 
 def get_chat_history():
     """Retrieve chat history."""
@@ -124,3 +151,47 @@ def add_improvement(improvement_id: str, improvement_text: str):
 def get_applied_improvements():
     """Get all applied improvements."""
     return st.session_state.get("applied_improvements", [])
+
+
+# ── Backend integration helpers ───────────────────────────────────────
+
+
+def set_session_id(session_id: str):
+    """Store the session_id returned by the ingest step."""
+    st.session_state.session_id = session_id
+
+
+def get_session_id() -> Optional[str]:
+    """Retrieve the current ingest session_id."""
+    return st.session_state.get("session_id")
+
+
+def set_generated_slides(slides: list, title: str = ""):
+    """Store slides returned by the generate step."""
+    st.session_state.generated_slides = slides
+    st.session_state.presentation_title = title
+
+
+def get_generated_slides() -> list:
+    """Return the current list of generated slides."""
+    return st.session_state.get("generated_slides", [])
+
+
+def get_presentation_title() -> str:
+    """Return the presentation title from the last generation."""
+    return st.session_state.get("presentation_title", "")
+
+
+def set_backend_status(available: bool):
+    """Update the cached backend availability flag."""
+    st.session_state.backend_available = available
+
+
+def is_backend_available() -> bool:
+    """Return whether the last health check succeeded."""
+    return st.session_state.get("backend_available", False)
+
+
+def is_mock_mode() -> bool:
+    """Return True when the user has enabled mock-data mode."""
+    return st.session_state.get("use_mock_data", False)

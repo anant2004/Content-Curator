@@ -15,7 +15,7 @@ router = APIRouter(prefix="/export", tags=["Export"])
 @router.post("/", response_model=ExportResponse)
 async def export_presentation(
     req: ExportRequest,
-    pres_store: dict = Depends(get_presentation_store),
+    pres_store=Depends(get_presentation_store),
 ):
     """Export slides as PPTX or PDF and return download metadata."""
     # Allow caller to pass their own slides, or fall back to stored ones
