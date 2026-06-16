@@ -14,6 +14,7 @@ async def generate_outline(
     audience: str = "general",
     tone: str = "professional",
     focus: str = "key insights",
+    user_prompt: str = "",
     session_id: str = "",
 ) -> OutlineResponse:
     """Generate a structured slide outline from source content."""
@@ -23,18 +24,23 @@ async def generate_outline(
     if len(content) > MAX_CONTENT_CHARS:
         logger.info(f"Content trimmed from {len(content)} to {MAX_CONTENT_CHARS} chars")
 
-    user_prompt = Template(OUTLINE_USER).substitute(
+    # Fallback if user didn't type a prompt
+    effective_prompt = user_prompt.strip() if user_prompt and user_prompt.strip() else \
+        "Summarise the source document into a clear, professional presentation."
+
+    user_msg = Template(OUTLINE_USER).substitute(
         num_slides=num_slides,
         audience=audience or "general audience",
         tone=tone or "professional",
         focus=focus or "key insights and findings",
+        user_prompt=effective_prompt,
         content=trimmed,
     )
 
     for attempt in range(1, 3):  # try up to 2 times
         data = await llm_client.chat_json(
             system_prompt=OUTLINE_SYSTEM,
-            user_prompt=user_prompt,
+            user_prompt=user_msg,
             max_tokens=4000,
             temperature=0.5,
         )

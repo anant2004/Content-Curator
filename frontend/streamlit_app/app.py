@@ -54,9 +54,8 @@ def main():
     
     st.divider()
     
-    # Sidebar
-    with st.sidebar:
-        render_sidebar()
+    # Sidebar (render_sidebar manages its own st.sidebar context)
+    render_sidebar()
     
     # Main content area
     col_chat, col_preview = st.columns([1, 1], gap="large")

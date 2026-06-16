@@ -35,6 +35,7 @@ async def create_outline(
             audience=req.audience or "general audience",
             tone=req.tone or "professional",
             focus=req.focus or "key insights",
+            user_prompt=req.user_prompt or "",
             session_id=req.session_id,
         )
     except Exception as e:
@@ -60,6 +61,7 @@ async def create_slides(
             audience=req.audience or "general audience",
             tone=req.tone or "professional",
             focus=req.focus or "key insights",
+            user_prompt=req.user_prompt or "",
             session_id=req.session_id,
         )
         slides = await generate_slides(
@@ -68,6 +70,7 @@ async def create_slides(
             source_content=content_obj.raw_text,
             audience=req.audience or "general audience",
             tone=req.tone or "professional",
+            user_prompt=req.user_prompt or "",
         )
     except Exception as e:
         logger.exception("Slide generation failed")

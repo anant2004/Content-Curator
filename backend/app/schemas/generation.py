@@ -9,6 +9,7 @@ class GenerationRequest(BaseModel):
     audience: Optional[str] = Field(default=None, description="Target audience (e.g. executives, students)")
     tone: Optional[str] = Field(default="professional", description="Tone: professional, casual, academic")
     focus: Optional[str] = Field(default=None, description="Specific angle or focus area")
+    user_prompt: Optional[str] = Field(default=None, description="The user's natural language instruction for the presentation")
 
 
 class OutlineItem(BaseModel):

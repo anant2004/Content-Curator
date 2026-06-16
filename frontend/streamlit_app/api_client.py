@@ -151,6 +151,7 @@ class APIClient:
         audience: Optional[str] = None,
         tone: Optional[str] = "professional",
         focus: Optional[str] = None,
+        user_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate a slide outline from a previously ingested session.
@@ -164,6 +165,7 @@ class APIClient:
             audience:    Target audience description
             tone:        Tone (professional / casual / academic)
             focus:       Specific focus area
+            user_prompt: The user's typed instruction (what they want built)
         """
         payload = {
             "session_id": session_id,
@@ -171,6 +173,7 @@ class APIClient:
             "audience": audience or "general audience",
             "tone": tone or "professional",
             "focus": focus or "key insights",
+            "user_prompt": user_prompt or "",
         }
         return self._post_json(f"{BASE_API}/generate/outline", payload)
 
@@ -181,6 +184,7 @@ class APIClient:
         audience: Optional[str] = None,
         tone: Optional[str] = "professional",
         focus: Optional[str] = None,
+        user_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate full slide content (outline + per-slide details).
@@ -194,6 +198,7 @@ class APIClient:
             audience:    Target audience description
             tone:        Tone (professional / casual / academic)
             focus:       Specific focus area
+            user_prompt: The user's typed instruction (what they want built)
         """
         payload = {
             "session_id": session_id,
@@ -201,6 +206,7 @@ class APIClient:
             "audience": audience or "general audience",
             "tone": tone or "professional",
             "focus": focus or "key insights",
+            "user_prompt": user_prompt or "",
         }
         return self._post_json(f"{BASE_API}/generate/slides", payload)
 
@@ -278,7 +284,7 @@ class APIClient:
             "format": format,
             "theme": theme or "midnight_executive",
         }
-        meta = self._post_json(f"{BASE_API}/export/", payload, use_llm_timeout=True)
+        meta = self._post_json(f"{BASE_API}/export/", payload)
         if "error" in meta:
             st.error(f"Export failed: {meta['error']}")
             return None

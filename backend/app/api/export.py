@@ -37,7 +37,7 @@ async def export_presentation(
 
     file_size = out_path.stat().st_size
     filename = out_path.name
-    download_url = f"/export/download/{filename}"
+    download_url = f"/api/v1/export/download/{filename}"
 
     logger.info(f"Exported session={req.session_id} format={req.format} size={file_size}")
 

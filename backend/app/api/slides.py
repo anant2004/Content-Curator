@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from backend.app.schemas.slide import SlideContent, SlideUpdateRequest, SlideRegenerateRequest
 from backend.app.services.llm.slide_generator import edit_slide
 from backend.app.api.generation import get_presentation_store
+from backend.app.services.generation.presentation_store import presentation_store
 from backend.app.utils.logger import logger
 
 router = APIRouter(prefix="/slides", tags=["Slides"])
@@ -27,12 +28,13 @@ async def edit_slide_endpoint(
         logger.exception("Slide edit failed")
         raise HTTPException(500, f"Slide edit failed: {e}")
 
-    # Update in store
+    # Update in store and persist to disk
     for i, s in enumerate(pres.slides):
         if s.slide_number == req.slide_number:
             pres.slides[i] = updated
             break
 
+    presentation_store.set(req.session_id, pres)
     return updated
 
 
@@ -51,6 +53,7 @@ async def update_slide_content(
     for i, s in enumerate(pres.slides):
         if s.slide_number == slide_number:
             pres.slides[i] = slide
+            presentation_store.set(session_id, pres)  # persist to disk
             return slide
 
     raise HTTPException(404, f"Slide {slide_number} not found in session {session_id}.")

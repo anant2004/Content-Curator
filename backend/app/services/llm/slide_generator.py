@@ -22,11 +22,13 @@ async def _generate_single_slide(
     audience: str,
     tone: str,
     source_excerpt: str,
+    user_prompt: str = "",
 ) -> SlideContent:
-    user_prompt = Template(SLIDE_USER).substitute(
+    user_msg = Template(SLIDE_USER).substitute(
         presentation_title=presentation_title,
         audience=audience,
         tone=tone,
+        user_prompt=user_prompt or "Create a professional presentation from the source material.",
         slide_number=outline_item.slide_number,
         title=outline_item.title,
         purpose=outline_item.purpose,
@@ -35,7 +37,7 @@ async def _generate_single_slide(
     )
     data = await llm_client.chat_json(
         system_prompt=SLIDE_SYSTEM,
-        user_prompt=user_prompt,
+        user_prompt=user_msg,
         max_tokens=3000,
         temperature=0.4,
     )
@@ -71,6 +73,7 @@ async def generate_slides(
     source_content: str,
     audience: str = "general",
     tone: str = "professional",
+    user_prompt: str = "",
 ) -> List[SlideContent]:
     """Generate all slide contents sequentially with a two-pass retry strategy.
 
@@ -102,7 +105,7 @@ async def generate_slides(
             await asyncio.sleep(INTER_SLIDE_DELAY)
         try:
             slide = await _generate_single_slide(
-                item, presentation_title, audience, tone, excerpt
+                item, presentation_title, audience, tone, excerpt, user_prompt
             )
             slides.append(slide)
         except Exception as e:
@@ -120,7 +123,7 @@ async def generate_slides(
             await asyncio.sleep(INTER_SLIDE_DELAY)
             try:
                 slide = await _generate_single_slide(
-                    item, presentation_title, audience, tone, excerpt
+                    item, presentation_title, audience, tone, excerpt, user_prompt
                 )
                 for idx, s in enumerate(slides):
                     if s.slide_number == item.slide_number:

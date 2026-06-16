@@ -161,38 +161,49 @@ def _handle_generate(
 
         # ── STEP 1: INGEST ────────────────────────────────────────
         uploaded_files = st.session_state.get("uploaded_files") or []
-        session_id = st.session_state.get("session_id")  # reuse if already ingested
 
-        if not session_id:
-            if uploaded_files:
-                # Ingest the first file (backend stores per session; handle one at a time)
-                with st.spinner("📤 Uploading and ingesting document…"):
-                    ingest_resp = api.ingest_file(uploaded_files[0])
+        # IMPORTANT: Always re-ingest when files are present.
+        # Do NOT reuse a stale session_id — Streamlit session state is ephemeral
+        # and gets cleared on page reload. A leftover session_id may point to a
+        # completely different document (or no document at all on the backend),
+        # causing the LLM to generate content unrelated to the uploaded file.
+        if uploaded_files:
+            # Re-ingest the file on every generation to guarantee the correct
+            # source content is used (backend deduplication is not relied upon).
+            with st.spinner(f"📤 Uploading and ingesting '{uploaded_files[0].name}'…"):
+                ingest_resp = api.ingest_file(uploaded_files[0])
 
-                if "error" in ingest_resp:
-                    st.error(f"Ingestion failed: {ingest_resp['error']}")
-                    add_assistant_message(f"❌ Ingestion failed: {ingest_resp['error']}")
-                    return
+            if "error" in ingest_resp:
+                st.error(f"Ingestion failed: {ingest_resp['error']}")
+                add_assistant_message(f"❌ Ingestion failed: {ingest_resp['error']}")
+                return
 
-                session_id = ingest_resp["session_id"]
-                state.set_session_id(session_id)
-                st.session_state.ingested_preview = ingest_resp.get("preview", "")
-                st.success(
-                    f"✓ Document ingested ({ingest_resp.get('char_count', 0):,} characters)"
-                )
+            session_id = ingest_resp["session_id"]
+            state.set_session_id(session_id)
+            st.session_state.ingested_preview = ingest_resp.get("preview", "")
+            st.info(
+                f"📄 Source: **{uploaded_files[0].name}** "
+                f"({ingest_resp.get('char_count', 0):,} characters ingested)"
+            )
 
-            else:
-                # No file — ingest the prompt text itself as source material
-                with st.spinner("📥 Ingesting your prompt as source text…"):
-                    ingest_resp = api.ingest_text(prompt, label="user_prompt")
+        else:
+            # No file uploaded — warn the user clearly that the prompt text
+            # will be used as the ONLY source material, not any prior file.
+            st.warning(
+                "⚠️ **No file uploaded.** The presentation will be generated "
+                "from your prompt text only — not from any previously uploaded document. "
+                "Upload a file above if you want content based on your document."
+            )
+            with st.spinner("📥 Ingesting your prompt as source text…"):
+                ingest_resp = api.ingest_text(prompt, label="user_prompt")
 
-                if "error" in ingest_resp:
-                    st.error(f"Ingestion failed: {ingest_resp['error']}")
-                    add_assistant_message(f"❌ Ingestion failed: {ingest_resp['error']}")
-                    return
+            if "error" in ingest_resp:
+                st.error(f"Ingestion failed: {ingest_resp['error']}")
+                add_assistant_message(f"❌ Ingestion failed: {ingest_resp['error']}")
+                return
 
-                session_id = ingest_resp["session_id"]
-                state.set_session_id(session_id)
+            session_id = ingest_resp["session_id"]
+            state.set_session_id(session_id)
 
         # ── STEP 2: GENERATE ──────────────────────────────────────
         with st.spinner("🤖 Generating slides — this may take a moment…"):
@@ -202,6 +213,7 @@ def _handle_generate(
                 audience=audience,
                 tone=tone,
                 focus=focus or None,
+                user_prompt=prompt,   # ← the user's typed instruction now reaches the LLM
             )
 
         if "error" in gen_resp:
