@@ -31,7 +31,7 @@ Tone: {tone}
 Focus: {focus}
 
 USER INSTRUCTION (this is what the user wants — let it guide how you structure the outline):
-$user_prompt
+{user_prompt}
 
 ⚠️ CRITICAL: Your outline MUST be grounded in the SOURCE CONTENT.
 - Do NOT invent a topic. Extract the topic FROM the source.
@@ -99,7 +99,7 @@ Tone:
 {tone}
 
 User instruction (what the user asked for — honour this in tone, angle and framing):
-$user_prompt
+{user_prompt}
 
 
 Slide information:
@@ -128,7 +128,7 @@ No explanation.
 
 JSON FORMAT:
 
-{
+{{
   "slide_number": {slide_number},
 
   "title": "slide title",
@@ -138,7 +138,7 @@ JSON FORMAT:
 
   "elements": [
 
-    {
+    {{
       "type": "text",
 
       "content": "text to display",
@@ -154,7 +154,7 @@ JSON FORMAT:
       "bold": true,
 
       "alignment": "left"
-    }
+    }}
 
   ],
 
@@ -167,16 +167,16 @@ JSON FORMAT:
   "Presenter explanation",
 
 
-  "background": {
+  "background": {{
 
       "color": "#FFFFFF",
 
       "style": "solid"
 
-  },
+  }},
 
 
-  "theme": {
+  "theme": {{
 
       "title_color": "#111111",
 
@@ -184,9 +184,9 @@ JSON FORMAT:
 
       "accent_color": "#2563EB"
 
-  }
+  }}
 
-}
+}}
 
 
 Rules:

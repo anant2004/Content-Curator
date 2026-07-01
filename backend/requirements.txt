@@ -20,6 +20,7 @@ weasyprint==62.1
 python-magic==0.4.27
 aiofiles==23.2.1
 loguru==0.7.2
+json-repair>=0.61.0
 
 # Testing
 pytest==8.2.0

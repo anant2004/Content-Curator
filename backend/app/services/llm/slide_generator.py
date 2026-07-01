@@ -1,7 +1,7 @@
 import json
 import asyncio
 from typing import List
-from string import Template
+
 from backend.app.services.llm.client import llm_client
 from backend.app.services.llm.prompts import (
     SLIDE_SYSTEM,
@@ -24,17 +24,17 @@ async def _generate_single_slide(
     source_excerpt: str,
     user_prompt: str = "",
 ) -> SlideContent:
-    user_msg = Template(SLIDE_USER).substitute(
-        presentation_title=presentation_title,
-        audience=audience,
-        tone=tone,
-        user_prompt=user_prompt or "Create a professional presentation from the source material.",
-        slide_number=outline_item.slide_number,
-        title=outline_item.title,
-        purpose=outline_item.purpose,
-        key_points=", ".join(outline_item.key_points),
-        source_excerpt=source_excerpt[:1500],
-    )
+    user_msg = SLIDE_USER.format_map({
+        "presentation_title": presentation_title,
+        "audience": audience,
+        "tone": tone,
+        "user_prompt": user_prompt or "Create a professional presentation from the source material.",
+        "slide_number": outline_item.slide_number,
+        "title": outline_item.title,
+        "purpose": outline_item.purpose,
+        "key_points": ", ".join(outline_item.key_points),
+        "source_excerpt": source_excerpt[:1500],
+    })
     data = await llm_client.chat_json(
         system_prompt=SLIDE_SYSTEM,
         user_prompt=user_msg,
@@ -148,11 +148,11 @@ async def edit_slide(
     instruction: str,
 ) -> SlideContent:
     """Edit a single slide based on a natural language instruction."""
-    user_prompt = Template(SLIDE_EDIT_USER).substitute(
-        instruction=instruction,
-        current_slide_json=json.dumps(current_slide.model_dump(), indent=2),
-        slide_number=current_slide.slide_number,
-    )
+    user_prompt = SLIDE_EDIT_USER.format_map({
+        "instruction": instruction,
+        "current_slide_json": json.dumps(current_slide.model_dump(), indent=2),
+        "slide_number": current_slide.slide_number,
+    })
     data = await llm_client.chat_json(
         system_prompt=SLIDE_EDIT_SYSTEM,
         user_prompt=user_prompt,

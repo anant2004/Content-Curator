@@ -3,7 +3,7 @@ from backend.app.services.llm.client import llm_client
 from backend.app.services.llm.prompts import OUTLINE_SYSTEM, OUTLINE_USER
 from backend.app.schemas.generation import OutlineResponse, OutlineItem
 from backend.app.utils.logger import logger
-from string import Template
+
 
 MAX_CONTENT_CHARS = 6000  # Trim content to stay within context window
 
@@ -28,14 +28,14 @@ async def generate_outline(
     effective_prompt = user_prompt.strip() if user_prompt and user_prompt.strip() else \
         "Summarise the source document into a clear, professional presentation."
 
-    user_msg = Template(OUTLINE_USER).substitute(
-        num_slides=num_slides,
-        audience=audience or "general audience",
-        tone=tone or "professional",
-        focus=focus or "key insights and findings",
-        user_prompt=effective_prompt,
-        content=trimmed,
-    )
+    user_msg = OUTLINE_USER.format_map({
+        "num_slides": num_slides,
+        "audience": audience or "general audience",
+        "tone": tone or "professional",
+        "focus": focus or "key insights and findings",
+        "user_prompt": effective_prompt,
+        "content": trimmed,
+    })
 
     for attempt in range(1, 3):  # try up to 2 times
         data = await llm_client.chat_json(
