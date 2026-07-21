@@ -28,16 +28,25 @@ def render_sidebar():
     """Render the sidebar component."""
     with st.sidebar:
 
-        # ── CSS: bold the INPUT SECTION expander title ───────────
+        # ── Sidebar Header: INPUT SECTION title ──────────────────
+        st.markdown(
+            """
+            <div class="sidebar-header-title-container">
+                <span class="sidebar-header-title">INPUT SECTION</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # ── CSS: bold expander labels ────────────────────────────
         st.markdown(
             """
             <style>
-            /* Bold the INPUT SECTION expander label specifically */
             details[data-testid="stExpander"] summary p {
                 font-weight: 700 !important;
                 font-size: 14px !important;
                 color: #003B7A !important;
-                letter-spacing: 0.04em !important;
+                letter-spacing: 0.02em !important;
             }
             </style>
             """,
@@ -150,11 +159,10 @@ def render_sidebar():
         if st.session_state.get("ingested_preview"):
             with st.expander("📄 Ingested content preview", expanded=False):
                 st.caption(st.session_state.ingested_preview)
-
         st.divider()
 
-        # 6. INPUT SECTION expander (Compliance & Style Templates)
-        with st.expander("INPUT SECTION", expanded=False):
+        # 6. Compliance Frameworks & Style Templates expander
+        with st.expander("Compliance Framework & Style Templates", expanded=False):
 
             # Compliance Frameworks
             st.markdown("#### 📋 Compliance Frameworks")
@@ -191,3 +199,4 @@ def render_sidebar():
             if template_file:
                 st.session_state.uploaded_template = template_file
                 st.success(f"✓ '{template_file.name}' uploaded")
+
