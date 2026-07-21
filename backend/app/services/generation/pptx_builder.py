@@ -143,12 +143,15 @@ def build_pptx(
         apply_background(slide, s)
 
         #
-        # Theme colors
+        # Theme colors — prefer per-slide theme from LLM, fall back to defaults
         #
 
-        title_color = RGBColor(17, 17, 17)
-
-        body_color = RGBColor(50, 50, 50)
+        if s.theme:
+            title_color = hex_to_rgb(s.theme.title_color)
+            body_color  = hex_to_rgb(s.theme.body_color)
+        else:
+            title_color = RGBColor(17, 17, 17)
+            body_color  = RGBColor(50, 50, 50)
 
         #
         # NEW SYSTEM:
@@ -162,8 +165,9 @@ def build_pptx(
             for element in elements:
 
                 if element.type == "text":
-
-                    add_text_element(slide, element, body_color)
+                    # Use title_color for bold/title elements, body_color otherwise
+                    color = title_color if getattr(element, "bold", False) else body_color
+                    add_text_element(slide, element, color)
 
                 elif element.type == "image":
 

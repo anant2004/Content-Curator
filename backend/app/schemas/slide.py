@@ -2,6 +2,17 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
+class SlideBackground(BaseModel):
+    color: str = "#FFFFFF"
+    style: str = "solid"
+
+
+class SlideTheme(BaseModel):
+    title_color: str = "#111111"
+    body_color: str = "#333333"
+    accent_color: str = "#2563EB"
+
+
 class SlideElement(BaseModel):
     type: str
     content: str
@@ -42,6 +53,10 @@ class SlideContent(BaseModel):
     alignment: Optional[str] = "left"
     background_style: Optional[str] = "light"
     accent: Optional[str] = None
+
+    # Per-slide colors returned by the LLM
+    background: Optional[SlideBackground] = None
+    theme: Optional[SlideTheme] = None
 
     # Generation status — set to True if LLM failed to generate this slide
     failed: bool = False

@@ -1,6 +1,7 @@
 import json
 import asyncio
 import httpx
+from json_repair import repair_json
 from typing import Optional
 from backend.app.config import settings
 from backend.app.utils.logger import logger
@@ -140,12 +141,21 @@ class OpenRouterClient:
             return json.loads(cleaned)
 
         except json.JSONDecodeError as e:
-            logger.error(
-                f"Failed to parse LLM JSON: {e}\n"
-                f"Cleaned response:\n{cleaned[:1000]}\n"
-                f"Raw response:\n{raw[:1000]}"
+            logger.warning(
+                f"Raw JSON parse failed: {e} — attempting json_repair\n"
+                f"Cleaned response:\n{cleaned[:500]}"
             )
-            raise ValueError(f"LLM returned invalid JSON: {e}") from e
+            try:
+                repaired = repair_json(cleaned, return_objects=False)
+                result = json.loads(repaired)
+                logger.info("json_repair recovered the response successfully")
+                return result
+            except Exception as repair_err:
+                logger.error(
+                    f"json_repair also failed: {repair_err}\n"
+                    f"Raw response:\n{raw[:1000]}"
+                )
+                raise ValueError(f"LLM returned invalid JSON: {e}") from e
 
 
 # Singleton

@@ -108,8 +108,30 @@ def _build_with_reportlab(
 
     story = []
     for slide in slides:
+        # Per-slide theme overrides the named theme when the LLM supplied one
+        if slide.theme:
+            slide_primary      = colors.HexColor(slide.theme.title_color)
+            slide_text_color   = colors.HexColor(slide.theme.body_color)
+            slide_accent       = colors.HexColor(slide.theme.accent_color)
+        else:
+            slide_primary    = primary
+            slide_text_color = text_color
+            slide_accent     = accent
+
+        slide_title_style = ParagraphStyle(
+            f"SlideTitle_{slide.slide_number}",
+            parent=styles["Heading1"],
+            textColor=slide_primary, fontSize=24, spaceAfter=12,
+        )
+        slide_bullet_style = ParagraphStyle(
+            f"SlideBullet_{slide.slide_number}",
+            parent=styles["Normal"],
+            textColor=slide_text_color, fontSize=13,
+            leftIndent=20, spaceAfter=6,
+        )
+
         # Slide title
-        story.append(Paragraph(slide.title, title_style))
+        story.append(Paragraph(slide.title, slide_title_style))
         story.append(Spacer(1, 0.1 * inch))
 
         # Fix 3: Prefer elements[] (what the LLM actually fills in),
@@ -117,7 +139,7 @@ def _build_with_reportlab(
         if slide.elements:
             for element in slide.elements:
                 if element.type == "text" and element.content.strip() != slide.title.strip():
-                    story.append(Paragraph(element.content, bullet_style))
+                    story.append(Paragraph(element.content, slide_bullet_style))
                 elif element.type == "image":
                     # Real image embedding not supported — show a placeholder note
                     story.append(
@@ -125,7 +147,7 @@ def _build_with_reportlab(
                     )
         elif slide.bullets:
             for bullet in slide.bullets:
-                story.append(Paragraph(f"\u2022 {bullet}", bullet_style))
+                story.append(Paragraph(f"\u2022 {bullet}", slide_bullet_style))
 
         if slide.speaker_notes:
             story.append(Spacer(1, 0.15 * inch))
