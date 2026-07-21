@@ -2,9 +2,15 @@
 Sidebar Component
 
 Renders left sidebar with:
-- Domain & output type filters
-- Session/recent documents
-- Suggested actions
+- INPUT SECTION label (always visible)
+- Mock mode toggle (with safe fallback)
+- Content Configuration
+- Select Domain (with conditional custom input)
+- Select Division
+- Output Type
+- Preferred File Type (with conditional custom input)
+- Upload Documents
+- Advanced Options (Compliance Frameworks & Style Templates)
 """
 
 import streamlit as st
@@ -13,120 +19,175 @@ from streamlit_app.config import (
     DIVISIONS,
     OUTPUT_TYPES,
     FILE_TYPES,
-    RECENT_DOCUMENTS,
-    SUGGESTED_ACTIONS,
+    COMPLIANCE_FRAMEWORKS,
 )
 from streamlit_app import state
-from streamlit_app.api_client import get_api_client
 
 
 def render_sidebar():
     """Render the sidebar component."""
     with st.sidebar:
 
-        # ── Backend Status ──────────────────────────────────────
-        _render_backend_status()
+        # ── CSS: bold the INPUT SECTION expander title ───────────
+        st.markdown(
+            """
+            <style>
+            /* Bold the INPUT SECTION expander label specifically */
+            details[data-testid="stExpander"] summary p {
+                font-weight: 700 !important;
+                font-size: 14px !important;
+                color: #003B7A !important;
+                letter-spacing: 0.04em !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
+        # ── Backend / mock toggle (safe fallback) ────────────────
+        try:
+            from streamlit_app.api_client import get_api_client
+            api = get_api_client()
+            is_live = api.health_check()
+            state.set_backend_status(is_live)
+            status_text = "🟢 Backend connected" if is_live else "🔴 Backend offline"
+        except Exception:
+            is_live = False
+            status_text = "🔴 Backend offline"
+
+        col_tog, col_status = st.columns([1, 1])
+        with col_tog:
+            use_mock = st.toggle(
+                "Mock mode",
+                value=st.session_state.get("use_mock_data", not is_live),
+                key="mock_toggle",
+                help="When enabled, uses built-in mock data instead of calling the backend.",
+            )
+            st.session_state.use_mock_data = use_mock
+        with col_status:
+            st.markdown(
+                f"<div style='padding-top:8px; font-size:11px; color:#6B7280;'>{status_text}</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+
+        # ── Content Configuration ────────────────────────────────
         st.markdown("### ⚙️ Content Configuration")
-        # Domain Selector
-        st.session_state.selected_domain = st.selectbox(
+
+        # 1. Select Domain
+        selected_domain = st.selectbox(
             "Select Domain",
             DOMAINS,
             key="domain_select",
         )
+        st.session_state.selected_domain = selected_domain
 
-        # Division Selector
+        if selected_domain == "Others":
+            custom_domain = st.text_input(
+                "Custom Domain",
+                value=st.session_state.get("custom_domain", ""),
+                placeholder="Enter custom domain",
+                key="custom_domain_input",
+                label_visibility="collapsed",
+            )
+            st.session_state.custom_domain = custom_domain
+
+        # 2. Select Division
         st.session_state.selected_division = st.selectbox(
             "Select Division",
             DIVISIONS,
             key="division_select",
         )
 
-        # Output Type Selector
+        # 3. Output Type
         st.session_state.selected_output_type = st.selectbox(
             "Output Type",
             OUTPUT_TYPES,
             key="output_type_select",
         )
 
-        # File Type Selector
-        st.session_state.selected_file_type = st.selectbox(
+        # 4. Preferred File Type
+        selected_file_type = st.selectbox(
             "Preferred File Type",
             FILE_TYPES,
             key="file_type_select",
         )
+        st.session_state.selected_file_type = selected_file_type
 
-        st.divider()
+        if selected_file_type == "Others":
+            custom_file_type = st.text_input(
+                "Custom File Type",
+                value=st.session_state.get("custom_file_type", ""),
+                placeholder="Enter preferred file type",
+                key="custom_file_type_input",
+                label_visibility="collapsed",
+            )
+            st.session_state.custom_file_type = custom_file_type
 
-        # Recent Documents Section
-        st.markdown(
-            '<span class="sidebar-section-title">📄 Recent Documents</span>',
-            unsafe_allow_html=True,
-        )
-        if RECENT_DOCUMENTS:
-            for doc in RECENT_DOCUMENTS:
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    st.markdown(
-                        f'<div class="recent-doc-card">'
-                        f'<span class="recent-doc-name">{doc["name"]}</span>'
-                        f'<span class="recent-doc-meta">{doc["type"]} · {doc["date"]}</span>'
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                with col2:
-                    if st.button("📂", key=f"doc_{doc['id']}"):
-                        state.set_active_asset(doc["type"], doc)
-        else:
-            st.info("No recent documents")
-
-        st.divider()
-
-        # Suggested Actions
-        st.markdown(
-            '<span class="sidebar-section-title">💡 Suggested Actions</span>',
-            unsafe_allow_html=True,
-        )
-        for action in SUGGESTED_ACTIONS[:3]:
-            if st.button(
-                f"➜ {action['label']}",
-                key=f"action_{action['label']}",
-                use_container_width=True,
-            ):
-                st.session_state.current_prompt = action["prompt"]
-                st.session_state.selected_output_type = action["outputType"]
+        # 5. Upload Documents
+        st.markdown("#### 📎 Upload Documents")
+        col_up1, col_up2 = st.columns([4, 1])
+        with col_up1:
+            uploaded_files = st.file_uploader(
+                "Upload Documents (PDF, DOCX, PPTX, EML, TXT)",
+                type=["pdf", "docx", "pptx", "eml", "txt"],
+                accept_multiple_files=True,
+                key="file_uploader",
+                label_visibility="collapsed",
+            )
+        with col_up2:
+            if st.button("🗑️", key="clear_sidebar_uploads", use_container_width=True, help="Clear all uploads"):
+                st.session_state.uploaded_files = []
+                st.session_state.session_id = None
+                st.session_state.ingested_preview = ""
                 st.rerun()
-        
-        # Advanced Options moved to prompt bar
-        st.info("💡 Tip: Advanced options (compliance frameworks, style templates) are in the Generate section below.")
 
+        if uploaded_files:
+            st.session_state.uploaded_files = uploaded_files
+            st.success(f"✓ {len(uploaded_files)} file(s) ready to upload")
 
-def _render_backend_status():
-    """
-    Show backend health status and a mock-mode toggle at the top of the sidebar.
+        if st.session_state.get("ingested_preview"):
+            with st.expander("📄 Ingested content preview", expanded=False):
+                st.caption(st.session_state.ingested_preview)
 
-    - Runs a health check on every render (cached by @st.cache_resource on the client).
-    - Displays 🟢 / 🔴 so the user knows whether the backend is running.
-    - Provides a toggle to switch to mock mode when the backend is unavailable.
-    """
-    api = get_api_client()
-    is_live = api.health_check()
-    state.set_backend_status(is_live)
+        st.divider()
 
-    if is_live:
-        st.success("🟢 Backend connected — live mode")
-    else:
-        st.error("🔴 Backend offline")
-        st.caption("Start the backend with:\n```\nuvicorn backend.app.main:app --reload\n```")
+        # 6. INPUT SECTION expander (Compliance & Style Templates)
+        with st.expander("INPUT SECTION", expanded=False):
 
-    # Mock mode toggle
-    use_mock = st.toggle(
-        "Use mock data (offline mode)",
-        value=st.session_state.get("use_mock_data", False),
-        key="mock_toggle",
-        help="When enabled, the frontend uses built-in mock data instead of calling the backend.",
-    )
-    st.session_state.use_mock_data = use_mock
+            # Compliance Frameworks
+            st.markdown("#### 📋 Compliance Frameworks")
+            compliance_options = COMPLIANCE_FRAMEWORKS + ["Others"]
+            selected_frameworks = st.multiselect(
+                "Select applicable compliance frameworks:",
+                compliance_options,
+                key="compliance_select",
+                default=st.session_state.get("selected_compliance_frameworks", [])
+            )
+            st.session_state.selected_compliance_frameworks = selected_frameworks
 
-    st.divider()
+            if "Others" in selected_frameworks:
+                custom_framework = st.text_input(
+                    "Custom Compliance Framework",
+                    value=st.session_state.get("custom_compliance_framework", ""),
+                    placeholder="Enter custom compliance framework",
+                    key="custom_compliance_input",
+                    label_visibility="collapsed",
+                )
+                st.session_state.custom_compliance_framework = custom_framework
 
+            total = len(selected_frameworks)
+            if total:
+                st.success(f"✓ {total} framework(s) selected")
+
+            # Style Templates (upload only — no sample dropdown)
+            st.markdown("#### 🎨 Style Templates")
+            template_file = st.file_uploader(
+                "Upload style template",
+                type=["pptx", "docx"],
+                key="template_uploader"
+            )
+            if template_file:
+                st.session_state.uploaded_template = template_file
+                st.success(f"✓ '{template_file.name}' uploaded")

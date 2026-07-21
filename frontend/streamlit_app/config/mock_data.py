@@ -11,6 +11,7 @@ DOMAINS = [
     'Finance',
     'Environmental Management',
     'Training & Development',
+    'Others',
 ]
 
 OUTPUT_TYPES = [
@@ -56,7 +57,8 @@ FILE_TYPES = [
     "HTML",
     "Markdown",
     "CSV",
-    "TXT"
+    "TXT",
+    "Others",
 ]
 
 COMPLIANCE_FRAMEWORKS = [

@@ -2,10 +2,9 @@
 Prompt Bar Component
 
 Renders prompt input area with:
-- File upload zone (triggers backend ingest on upload)
 - Text prompt input
-- Generation options (num_slides, audience, tone, focus)
-- Generate button → ingest (if no file yet) → generate slides
+- Generation options (num_slides single textbar, target audience, tone with Others option, focus area)
+- Generate button → ingest (if file uploaded in sidebar) → generate content
 - Progress indication
 """
 
@@ -20,41 +19,14 @@ def render_prompt_bar():
 
     # ── Mock / Live indicator ──────────────────────────────────────
     if state.is_mock_mode():
-        st.warning("🔴 Mock Mode — backend calls are skipped. Toggle in sidebar.")
-
-    # ── File Upload Zone ───────────────────────────────────────────
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-        uploaded_files = st.file_uploader(
-            "📎 Upload Documents (PDF, DOCX, PPTX, EML, TXT)",
-            type=["pdf", "docx", "pptx", "eml", "txt"],
-            accept_multiple_files=True,
-            key="file_uploader",
-        )
-
-        if uploaded_files:
-            st.session_state.uploaded_files = uploaded_files
-            st.success(f"✓ {len(uploaded_files)} file(s) ready to upload")
-
-    with col2:
-        if st.button("🗑️", use_container_width=True, help="Clear all uploads"):
-            st.session_state.uploaded_files = []
-            st.session_state.session_id = None
-            st.session_state.ingested_preview = ""
-            st.rerun()
-
-    # Show ingestion preview if a file was already ingested this session
-    if st.session_state.get("ingested_preview"):
-        with st.expander("📄 Ingested content preview", expanded=False):
-            st.caption(st.session_state.ingested_preview)
+        st.warning("🔴 Mock Mode — backend calls are skipped.")
 
     # ── Prompt Input ───────────────────────────────────────────────
     st.markdown("#### Your Prompt")
     prompt = st.text_area(
         "Describe what you want to generate...",
         value=st.session_state.get("current_prompt", ""),
-        height=100,
+        height=180,
         key="prompt_input",
         placeholder=(
             "e.g., Create a safety training presentation for blast furnace operations..."
@@ -63,15 +35,36 @@ def render_prompt_bar():
     st.session_state.current_prompt = prompt
 
     # ── Generation Options ─────────────────────────────────────────
-    with st.expander("⚙️ Generation Options", expanded=False):
+    with st.expander("⚙️ Generation Options", expanded=True):
         col_a, col_b = st.columns(2)
         with col_a:
-            num_slides = st.slider("Number of slides", 3, 20, 8, key="num_slides")
-            tone = st.selectbox(
+            num_slides = st.number_input(
+                "Number of slides",
+                min_value=1,
+                max_value=100,
+                value=int(st.session_state.get("num_slides_input", 8)),
+                step=1,
+                key="num_slides_input",
+            )
+
+            tone_option = st.selectbox(
                 "Tone",
-                ["professional", "casual", "academic", "executive"],
+                ["professional", "casual", "academic", "executive", "Others"],
                 key="tone_select",
             )
+            if tone_option == "Others":
+                custom_tone = st.text_input(
+                    "Custom Tone",
+                    value=st.session_state.get("custom_tone", ""),
+                    placeholder="Enter custom tone",
+                    key="custom_tone_input",
+                    label_visibility="collapsed",
+                )
+                st.session_state.custom_tone = custom_tone
+                tone = custom_tone if custom_tone.strip() else "professional"
+            else:
+                tone = tone_option
+
         with col_b:
             audience = st.text_input(
                 "Target audience",
@@ -84,10 +77,6 @@ def render_prompt_bar():
                 placeholder="e.g., safety statistics, cost reduction",
                 key="focus_input",
             )
-
-    # ── Advanced Options ───────────────────────────────────────────
-    from streamlit_app.components.advanced_options import render_advanced_options
-    render_advanced_options()
 
     # ── Generate Button ────────────────────────────────────────────
     col1, col2, col3 = st.columns([2, 1, 1])
@@ -104,7 +93,7 @@ def render_prompt_bar():
         ):
             _handle_generate(
                 prompt=prompt,
-                num_slides=num_slides,
+                num_slides=int(num_slides),
                 audience=audience,
                 tone=tone,
                 focus=focus,
@@ -117,7 +106,7 @@ def render_prompt_bar():
 
     # ── Progress ───────────────────────────────────────────────────
     if state.is_generating():
-        st.info("⏳ Talking to the backend — this may take 20-60 seconds for LLM calls...")
+        st.info("⏳ Processing your request...")
         st.progress(0.5)
 
 
@@ -133,13 +122,6 @@ def _handle_generate(
 ):
     """
     Full ingest → generate pipeline.
-
-    Flow:
-      1. If files uploaded → POST /api/v1/ingest/upload for each file
-         Else → POST /api/v1/ingest/paste with the user's prompt text
-      2. Store returned session_id in st.session_state
-      3. POST /api/v1/generate/slides with the session_id
-      4. Store slides in st.session_state for preview & export
     """
     if not prompt.strip():
         st.error("Please enter a prompt")
@@ -148,7 +130,6 @@ def _handle_generate(
     state.set_generating(True)
 
     try:
-        # Add user message to chat history
         from streamlit_app.components.chat import add_user_message, add_assistant_message
         add_user_message(prompt)
 
@@ -162,14 +143,7 @@ def _handle_generate(
         # ── STEP 1: INGEST ────────────────────────────────────────
         uploaded_files = st.session_state.get("uploaded_files") or []
 
-        # IMPORTANT: Always re-ingest when files are present.
-        # Do NOT reuse a stale session_id — Streamlit session state is ephemeral
-        # and gets cleared on page reload. A leftover session_id may point to a
-        # completely different document (or no document at all on the backend),
-        # causing the LLM to generate content unrelated to the uploaded file.
         if uploaded_files:
-            # Re-ingest the file on every generation to guarantee the correct
-            # source content is used (backend deduplication is not relied upon).
             with st.spinner(f"📤 Uploading and ingesting '{uploaded_files[0].name}'…"):
                 ingest_resp = api.ingest_file(uploaded_files[0])
 
@@ -187,13 +161,6 @@ def _handle_generate(
             )
 
         else:
-            # No file uploaded — warn the user clearly that the prompt text
-            # will be used as the ONLY source material, not any prior file.
-            st.warning(
-                "⚠️ **No file uploaded.** The presentation will be generated "
-                "from your prompt text only — not from any previously uploaded document. "
-                "Upload a file above if you want content based on your document."
-            )
             with st.spinner("📥 Ingesting your prompt as source text…"):
                 ingest_resp = api.ingest_text(prompt, label="user_prompt")
 
@@ -213,7 +180,7 @@ def _handle_generate(
                 audience=audience,
                 tone=tone,
                 focus=focus or None,
-                user_prompt=prompt,   # ← the user's typed instruction now reaches the LLM
+                user_prompt=prompt,
             )
 
         if "error" in gen_resp:
@@ -225,7 +192,6 @@ def _handle_generate(
         title = gen_resp.get("presentation_title", "Presentation")
         state.set_generated_slides(slides, title)
 
-        # Store as active asset so preview panel picks it up
         state.set_active_asset(
             "presentation",
             {
@@ -237,8 +203,7 @@ def _handle_generate(
         )
 
         add_assistant_message(
-            f"✅ Generated **{title}** — {len(slides)} slides ready. "
-            "You can preview and export on the right."
+            f"✅ Generated **{title}** — {len(slides)} slides ready."
         )
         st.success(f"✓ {len(slides)} slides generated!")
 
@@ -252,8 +217,7 @@ def _handle_generate(
 
 def _handle_generate_mock(prompt: str):
     """
-    Mock generation path — uses the pre-built mock data instead of
-    calling the backend. Useful for UI development / offline demo.
+    Mock generation path.
     """
     from streamlit_app.config import PRESENTATION_SLIDES
     from streamlit_app.components.chat import add_assistant_message

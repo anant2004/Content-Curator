@@ -18,7 +18,6 @@ import streamlit as st
 from streamlit_app import state
 from streamlit_app.components import (
     render_sidebar,
-    render_chat_thread,
     render_prompt_bar,
     render_preview_panel,
     render_export_bar,
@@ -43,14 +42,8 @@ def main():
     # Load custom styles
     style_app()
     
-    # Header with title and toggle indicator
-    col_left, col_center, col_right = st.columns([1, 3, 1])
-    with col_left:
-        st.markdown("### ☰ Filters", help="👈 Open sidebar for domain/output type filters")
-    with col_center:
-        st.markdown("<h2 style='text-align: center;'>📝 TATA STEEL Content Curator</h2>", unsafe_allow_html=True)
-    with col_right:
-        pass
+    # Header with title
+    st.markdown("<h2 style='text-align: center;'>📝 TATA STEEL Content Curator</h2>", unsafe_allow_html=True)
     
     st.divider()
     
@@ -58,11 +51,9 @@ def main():
     render_sidebar()
     
     # Main content area
-    col_chat, col_preview = st.columns([1, 1], gap="large")
+    col_generate, col_preview = st.columns([1, 1], gap="large")
     
-    with col_chat:
-        render_chat_thread()
-        st.divider()
+    with col_generate:
         render_prompt_bar()
     
     with col_preview:
