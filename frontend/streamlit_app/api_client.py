@@ -88,11 +88,16 @@ class APIClient:
         Check if the backend is available.
 
         Backend endpoint: GET /health
-        Returns True when backend responds with {"status": "healthy"}
+        Returns True when backend responds with {"status": "healthy"} or {"status": "ok"}
+        Also accepts any successful JSON response that doesn't contain an "error" key.
         """
         try:
-            response = self._get("/health")
-            return response.get("status") == "healthy"
+            r = requests.get(self._url("/health"), timeout=5)  # short timeout for UI responsiveness
+            if not r.ok:
+                return False
+            data = r.json()
+            status = data.get("status", "")
+            return status in ("healthy", "ok") and "error" not in data
         except Exception:
             return False
 
@@ -116,6 +121,55 @@ class APIClient:
             )
         }
         return self._post_multipart(f"{BASE_API}/ingest/upload", files=files)
+
+    def ingest_files(self, uploaded_files: List) -> Dict[str, Any]:
+        """
+        Upload multiple files to the backend for batch ingestion.
+
+        Uses POST /api/v1/ingest/upload-batch which merges all files into
+        a single session.  Falls back to single-file ingest when only one
+        file is provided so the same method can be used unconditionally.
+
+        Backend endpoint: POST /api/v1/ingest/upload-batch
+        Returns: {session_id, filenames, failed_filenames, total_char_count, preview}
+
+        Args:
+            uploaded_files: List of Streamlit UploadedFile objects
+        """
+        if not uploaded_files:
+            return {"error": "No files provided"}
+
+        if len(uploaded_files) == 1:
+            # Use the single-file endpoint to keep the response schema consistent
+            resp = self.ingest_file(uploaded_files[0])
+            # Normalise to batch-like shape so callers don't need to branch
+            if "error" not in resp:
+                resp.setdefault("filenames", [resp.get("filename", "")])
+                resp.setdefault("failed_filenames", [])
+                resp.setdefault("total_char_count", resp.get("char_count", 0))
+            return resp
+
+        file_tuples = [
+            (
+                "files",
+                (
+                    f.name,
+                    f.getvalue(),
+                    f.type or "application/octet-stream",
+                ),
+            )
+            for f in uploaded_files
+        ]
+        try:
+            r = requests.post(
+                self._url(f"{BASE_API}/ingest/upload-batch"),
+                files=file_tuples,
+                timeout=self.timeout,
+            )
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.RequestException as e:
+            return {"error": str(e)}
 
     def ingest_text(self, text: str, label: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -152,6 +206,10 @@ class APIClient:
         tone: Optional[str] = "professional",
         focus: Optional[str] = None,
         user_prompt: Optional[str] = None,
+        domain: Optional[str] = None,
+        division: Optional[str] = None,
+        output_type: Optional[str] = None,
+        compliance_frameworks: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Generate a slide outline from a previously ingested session.
@@ -160,12 +218,16 @@ class APIClient:
         Returns: {session_id, title, outline: [...], total_slides}
 
         Args:
-            session_id: From a prior ingest_file() or ingest_text() call
-            num_slides:  Target number of slides (3–20)
-            audience:    Target audience description
-            tone:        Tone (professional / casual / academic)
-            focus:       Specific focus area
-            user_prompt: The user's typed instruction (what they want built)
+            session_id:            From a prior ingest_file() or ingest_text() call
+            num_slides:            Target number of slides (1–100)
+            audience:              Target audience description
+            tone:                  Tone (professional / casual / academic)
+            focus:                 Specific focus area
+            user_prompt:           The user's typed instruction
+            domain:                Content domain from the sidebar
+            division:              Organisational division from the sidebar
+            output_type:           Desired output type from the sidebar
+            compliance_frameworks: Selected compliance frameworks from the sidebar
         """
         payload = {
             "session_id": session_id,
@@ -174,6 +236,10 @@ class APIClient:
             "tone": tone or "professional",
             "focus": focus or "key insights",
             "user_prompt": user_prompt or "",
+            "domain": domain,
+            "division": division,
+            "output_type": output_type,
+            "compliance_frameworks": compliance_frameworks or [],
         }
         return self._post_json(f"{BASE_API}/generate/outline", payload)
 
@@ -185,6 +251,10 @@ class APIClient:
         tone: Optional[str] = "professional",
         focus: Optional[str] = None,
         user_prompt: Optional[str] = None,
+        domain: Optional[str] = None,
+        division: Optional[str] = None,
+        output_type: Optional[str] = None,
+        compliance_frameworks: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Generate full slide content (outline + per-slide details).
@@ -193,12 +263,16 @@ class APIClient:
         Returns: {session_id, presentation_title, slides: [...], total_slides}
 
         Args:
-            session_id: From a prior ingest_file() or ingest_text() call
-            num_slides:  Target number of slides (3–20)
-            audience:    Target audience description
-            tone:        Tone (professional / casual / academic)
-            focus:       Specific focus area
-            user_prompt: The user's typed instruction (what they want built)
+            session_id:            From a prior ingest_file() or ingest_text() call
+            num_slides:            Target number of slides (1–100)
+            audience:              Target audience description
+            tone:                  Tone (professional / casual / academic)
+            focus:                 Specific focus area
+            user_prompt:           The user's typed instruction
+            domain:                Content domain from the sidebar
+            division:              Organisational division from the sidebar
+            output_type:           Desired output type from the sidebar
+            compliance_frameworks: Selected compliance frameworks from the sidebar
         """
         payload = {
             "session_id": session_id,
@@ -207,6 +281,10 @@ class APIClient:
             "tone": tone or "professional",
             "focus": focus or "key insights",
             "user_prompt": user_prompt or "",
+            "domain": domain,
+            "division": division,
+            "output_type": output_type,
+            "compliance_frameworks": compliance_frameworks or [],
         }
         return self._post_json(f"{BASE_API}/generate/slides", payload)
 

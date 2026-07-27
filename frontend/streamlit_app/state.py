@@ -195,3 +195,50 @@ def is_backend_available() -> bool:
 def is_mock_mode() -> bool:
     """Return True when the user has enabled mock-data mode."""
     return st.session_state.get("use_mock_data", False)
+
+
+# ── Sidebar metadata helpers ──────────────────────────────────────────────
+
+
+def get_effective_domain() -> Optional[str]:
+    """Return the resolved domain value, substituting the custom input when 'Others' is selected."""
+    domain = st.session_state.get("selected_domain")
+    if domain == "Others":
+        return st.session_state.get("custom_domain", "").strip() or None
+    return domain or None
+
+
+def get_effective_division() -> Optional[str]:
+    """Return the selected division (no custom-input variant currently)."""
+    return st.session_state.get("selected_division") or None
+
+
+def get_effective_output_type() -> Optional[str]:
+    """Return the selected output type."""
+    return st.session_state.get("selected_output_type") or None
+
+
+def get_effective_compliance_frameworks() -> list:
+    """Return the resolved list of compliance frameworks.
+
+    If 'Others' is in the selected list, replace it with the user's custom
+    framework text (if any) so the backend always receives plain strings.
+    """
+    frameworks: list = list(st.session_state.get("selected_compliance_frameworks", []))
+    if "Others" in frameworks:
+        frameworks.remove("Others")
+        custom = st.session_state.get("custom_compliance_framework", "").strip()
+        if custom:
+            frameworks.append(custom)
+    return frameworks
+
+
+def get_effective_file_type() -> str:
+    """Return the preferred file type from the sidebar.
+
+    Falls back to 'PDF' when not set or 'Others' is selected without a custom value.
+    """
+    file_type = st.session_state.get("selected_file_type", "PDF")
+    if file_type == "Others":
+        return st.session_state.get("custom_file_type", "").strip() or "PDF"
+    return file_type or "PDF"

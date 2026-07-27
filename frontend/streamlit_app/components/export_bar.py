@@ -31,15 +31,22 @@ def render_export_bar():
     # ── Export section ──────────────────────────────────────────────
     st.markdown("#### Export Formats")
 
+    # Read sidebar preference to highlight the preferred format
+    preferred_ext = state.get_effective_file_type().lower()
+    # Normalise: map 'pptx'/'pdf' — anything else defaults to pptx
+    preferred_format = "pdf" if "pdf" in preferred_ext else "pptx"
+
     # Backend only supports PPTX and PDF — show those as primary
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("🎯 PowerPoint (.pptx)", use_container_width=True, type="primary"):
+        pptx_type = "primary" if preferred_format == "pptx" else "secondary"
+        if st.button("🎯 PowerPoint (.pptx)", use_container_width=True, type=pptx_type):
             _handle_export(session_id, title, slides, "pptx")
 
     with col2:
-        if st.button("📄 PDF", use_container_width=True):
+        pdf_type = "primary" if preferred_format == "pdf" else "secondary"
+        if st.button("📄 PDF", use_container_width=True, type=pdf_type):
             _handle_export(session_id, title, slides, "pdf")
 
     # Theme selector
@@ -55,6 +62,14 @@ def render_export_bar():
     )
     # Store theme choice so _handle_export can read it
     st.session_state._export_theme = theme
+
+    # Style template note
+    uploaded_template = st.session_state.get("uploaded_template")
+    if uploaded_template:
+        st.info(
+            f"🎨 Style template **'{uploaded_template.name}'** uploaded in sidebar. "
+            "Full template-based theming will be applied in a future update."
+        )
 
     st.divider()
 

@@ -24,6 +24,10 @@ async def create_outline(
     req: GenerationRequest,
 ):
     """Generate a slide outline from ingested content."""
+    print("========== GENERATE OUTLINE REQUEST ==========")
+    print(req.model_dump_json(indent=2))
+    print("==============================================")
+
     content_obj = session_store.get(req.session_id)
     if not content_obj:
         raise HTTPException(404, f"Session {req.session_id} not found. Ingest content first.")
@@ -37,12 +41,20 @@ async def create_outline(
             focus=req.focus or "key insights",
             user_prompt=req.user_prompt or "",
             session_id=req.session_id,
+            domain=req.domain,
+            division=req.division,
+            output_type=req.output_type,
+            compliance_frameworks=req.compliance_frameworks,
         )
     except Exception as e:
         logger.exception("Outline generation failed")
         raise HTTPException(500, f"Outline generation failed: {e}")
 
+    print("========== GENERATED OUTLINE RESPONSE ==========")
+    print(outline.model_dump_json(indent=2))
+    print("===============================================")
     return outline
+
 
 
 @router.post("/slides", response_model=GenerationResponse)
@@ -50,6 +62,10 @@ async def create_slides(
     req: GenerationRequest,
 ):
     """Generate full slide content (outline + per-slide) from ingested content."""
+    print("========== GENERATE SLIDES REQUEST ==========")
+    print(req.model_dump_json(indent=2))
+    print("=============================================")
+
     content_obj = session_store.get(req.session_id)
     if not content_obj:
         raise HTTPException(404, f"Session {req.session_id} not found. Ingest content first.")
@@ -63,6 +79,10 @@ async def create_slides(
             focus=req.focus or "key insights",
             user_prompt=req.user_prompt or "",
             session_id=req.session_id,
+            domain=req.domain,
+            division=req.division,
+            output_type=req.output_type,
+            compliance_frameworks=req.compliance_frameworks,
         )
         slides = await generate_slides(
             outline_items=outline.outline,
@@ -71,6 +91,10 @@ async def create_slides(
             audience=req.audience or "general audience",
             tone=req.tone or "professional",
             user_prompt=req.user_prompt or "",
+            domain=req.domain,
+            division=req.division,
+            output_type=req.output_type,
+            compliance_frameworks=req.compliance_frameworks,
         )
     except Exception as e:
         logger.exception("Slide generation failed")
@@ -84,7 +108,12 @@ async def create_slides(
     )
     presentation_store.set(req.session_id, result)
     logger.info(f"Generated {len(slides)} slides for session={req.session_id} — saved to presentations.json")
+
+    print("========== GENERATED SLIDES RESPONSE ==========")
+    print(result.model_dump_json(indent=2))
+    print("===============================================")
     return result
+
 
 
 @router.get("/slides/{session_id}", response_model=GenerationResponse)

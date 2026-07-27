@@ -120,9 +120,7 @@ def _handle_generate(
     tone: str = "professional",
     focus: str = "",
 ):
-    """
-    Full ingest → generate pipeline.
-    """
+    """Full ingest → generate pipeline, wired to all sidebar metadata."""
     if not prompt.strip():
         st.error("Please enter a prompt")
         return
@@ -140,12 +138,24 @@ def _handle_generate(
 
         api = get_api_client()
 
-        # ── STEP 1: INGEST ────────────────────────────────────────
-        uploaded_files = st.session_state.get("uploaded_files") or []
+        # ── Read sidebar metadata ─────────────────────────────────
+        domain = state.get_effective_domain()
+        division = state.get_effective_division()
+        output_type = state.get_effective_output_type()
+        compliance_frameworks = state.get_effective_compliance_frameworks()
 
-        if uploaded_files:
-            with st.spinner(f"📤 Uploading and ingesting '{uploaded_files[0].name}'…"):
-                ingest_resp = api.ingest_file(uploaded_files[0])
+        uploaded_files = st.session_state.get("uploaded_files") or []
+        existing_session_id = state.get_session_id()
+
+        # ── STEP 1: INGEST ────────────────────────────────────────
+        # Skip ingestion if the sidebar button already ingested this batch
+        if existing_session_id:
+            session_id = existing_session_id
+            st.info(f"♻️ Re-using existing ingest session ({len(uploaded_files)} file(s) already processed).")
+        elif uploaded_files:
+            file_names = ", ".join(f.name for f in uploaded_files)
+            with st.spinner(f"📤 Ingesting {len(uploaded_files)} file(s): {file_names}…"):
+                ingest_resp = api.ingest_files(uploaded_files)
 
             if "error" in ingest_resp:
                 st.error(f"Ingestion failed: {ingest_resp['error']}")
@@ -155,12 +165,17 @@ def _handle_generate(
             session_id = ingest_resp["session_id"]
             state.set_session_id(session_id)
             st.session_state.ingested_preview = ingest_resp.get("preview", "")
-            st.info(
-                f"📄 Source: **{uploaded_files[0].name}** "
-                f"({ingest_resp.get('char_count', 0):,} characters ingested)"
-            )
 
+            ok_names = ingest_resp.get("filenames", [ingest_resp.get("filename", file_names)])
+            total_chars = ingest_resp.get("total_char_count", ingest_resp.get("char_count", 0))
+            st.info(
+                f"📄 Ingested **{len(ok_names)}** file(s) ({total_chars:,} characters)"
+            )
+            fail_names = ingest_resp.get("failed_filenames", [])
+            if fail_names:
+                st.warning(f"⚠️ Could not ingest: {', '.join(fail_names)}")
         else:
+            # No files — ingest the prompt itself as the source text
             with st.spinner("📥 Ingesting your prompt as source text…"):
                 ingest_resp = api.ingest_text(prompt, label="user_prompt")
 
@@ -173,7 +188,9 @@ def _handle_generate(
             state.set_session_id(session_id)
 
         # ── STEP 2: GENERATE ──────────────────────────────────────
-        with st.spinner("🤖 Generating slides — this may take a moment…"):
+        context_parts = [p for p in [domain, division, output_type] if p]
+        context_label = f" [{' · '.join(context_parts)}]" if context_parts else ""
+        with st.spinner(f"🤖 Generating slides{context_label} — this may take a moment…"):
             gen_resp = api.generate_slides(
                 session_id=session_id,
                 num_slides=num_slides,
@@ -181,6 +198,10 @@ def _handle_generate(
                 tone=tone,
                 focus=focus or None,
                 user_prompt=prompt,
+                domain=domain,
+                division=division,
+                output_type=output_type,
+                compliance_frameworks=compliance_frameworks if compliance_frameworks else None,
             )
 
         if "error" in gen_resp:
@@ -202,9 +223,12 @@ def _handle_generate(
             },
         )
 
-        add_assistant_message(
-            f"✅ Generated **{title}** — {len(slides)} slides ready."
-        )
+        success_parts = [f"✅ Generated **{title}** — {len(slides)} slides ready."]
+        if context_parts:
+            success_parts.append(f"Context: {', '.join(context_parts)}")
+        if compliance_frameworks:
+            success_parts.append(f"Compliance: {', '.join(compliance_frameworks)}")
+        add_assistant_message("\n".join(success_parts))
         st.success(f"✓ {len(slides)} slides generated!")
 
     except Exception as e:

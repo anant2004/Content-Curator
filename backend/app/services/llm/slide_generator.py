@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import List
+from typing import List, Optional
 
 from backend.app.services.llm.client import llm_client
 from backend.app.services.llm.prompts import (
@@ -12,6 +12,7 @@ from backend.app.services.llm.prompts import (
 from backend.app.schemas.slide import SlideContent
 from backend.app.schemas.generation import OutlineItem
 from backend.app.utils.logger import logger
+from backend.app.services.llm.outline_generator import _build_context_block
 
 INTER_SLIDE_DELAY = 2.0  # seconds between requests — reduces rate limit pressure
 
@@ -23,12 +24,14 @@ async def _generate_single_slide(
     tone: str,
     source_excerpt: str,
     user_prompt: str = "",
+    context_block: str = "",
 ) -> SlideContent:
     user_msg = SLIDE_USER.format_map({
         "presentation_title": presentation_title,
         "audience": audience,
         "tone": tone,
         "user_prompt": user_prompt or "Create a professional presentation from the source material.",
+        "context_block": context_block,
         "slide_number": outline_item.slide_number,
         "title": outline_item.title,
         "purpose": outline_item.purpose,
@@ -74,6 +77,10 @@ async def generate_slides(
     audience: str = "general",
     tone: str = "professional",
     user_prompt: str = "",
+    domain: Optional[str] = None,
+    division: Optional[str] = None,
+    output_type: Optional[str] = None,
+    compliance_frameworks: Optional[List[str]] = None,
 ) -> List[SlideContent]:
     """Generate all slide contents sequentially with a two-pass retry strategy.
 
@@ -82,6 +89,7 @@ async def generate_slides(
     3. Slides that fail both passes are returned with failed=True.
     """
     excerpt = source_content[:4000]
+    context_block = _build_context_block(domain, division, output_type, compliance_frameworks)
 
     def _placeholder(item: OutlineItem, error: str) -> SlideContent:
         return SlideContent(
@@ -105,7 +113,7 @@ async def generate_slides(
             await asyncio.sleep(INTER_SLIDE_DELAY)
         try:
             slide = await _generate_single_slide(
-                item, presentation_title, audience, tone, excerpt, user_prompt
+                item, presentation_title, audience, tone, excerpt, user_prompt, context_block
             )
             slides.append(slide)
         except Exception as e:
@@ -123,7 +131,7 @@ async def generate_slides(
             await asyncio.sleep(INTER_SLIDE_DELAY)
             try:
                 slide = await _generate_single_slide(
-                    item, presentation_title, audience, tone, excerpt, user_prompt
+                    item, presentation_title, audience, tone, excerpt, user_prompt, context_block
                 )
                 for idx, s in enumerate(slides):
                     if s.slide_number == item.slide_number:

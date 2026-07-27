@@ -9,7 +9,7 @@ Renders left sidebar with:
 - Select Division
 - Output Type
 - Preferred File Type (with conditional custom input)
-- Upload Documents
+- Upload Documents + "Upload & Ingest Now" button
 - Advanced Options (Compliance Frameworks & Style Templates)
 """
 
@@ -156,6 +156,24 @@ def render_sidebar():
             st.session_state.uploaded_files = uploaded_files
             st.success(f"✓ {len(uploaded_files)} file(s) ready to upload")
 
+        # ── Upload & Ingest Now button ─────────────────────────────
+        files_to_ingest = st.session_state.get("uploaded_files") or []
+        already_ingested = bool(st.session_state.get("session_id"))
+
+        if files_to_ingest and not state.is_mock_mode():
+            btn_label = "✅ Already ingested" if already_ingested else "📤 Upload & Ingest Now"
+            btn_disabled = already_ingested
+
+            if st.button(
+                btn_label,
+                key="ingest_now_btn",
+                use_container_width=True,
+                disabled=btn_disabled,
+                type="primary" if not already_ingested else "secondary",
+                help="Send files to the backend for text extraction before generating.",
+            ):
+                _ingest_uploaded_files(files_to_ingest)
+
         if st.session_state.get("ingested_preview"):
             with st.expander("📄 Ingested content preview", expanded=False):
                 st.caption(st.session_state.ingested_preview)
@@ -200,3 +218,50 @@ def render_sidebar():
                 st.session_state.uploaded_template = template_file
                 st.success(f"✓ '{template_file.name}' uploaded")
 
+
+# ── Private helpers ────────────────────────────────────────────────────────
+
+
+def _ingest_uploaded_files(files: list) -> None:
+    """Call the backend to ingest uploaded files and store the session.
+
+    Supports both single and multiple files via the ``ingest_files()`` API
+    client method (which routes to the correct endpoint automatically).
+
+    Stores ``session_id`` and ``ingested_preview`` in session state and
+    triggers a rerun so the sidebar reflects the updated state.
+    """
+    from streamlit_app.api_client import get_api_client
+
+    api = get_api_client()
+
+    file_names = ", ".join(f.name for f in files)
+    with st.spinner(f"📤 Ingesting {len(files)} file(s): {file_names}…"):
+        resp = api.ingest_files(files)
+
+    if "error" in resp:
+        st.error(f"❌ Ingestion failed: {resp['error']}")
+        return
+
+    session_id = resp.get("session_id")
+    if not session_id:
+        st.error("❌ Backend returned no session ID.")
+        return
+
+    state.set_session_id(session_id)
+
+    # Preview — batch response uses 'preview', single response also uses 'preview'
+    preview = resp.get("preview", "")
+    st.session_state.ingested_preview = preview
+
+    # Summarise results
+    ok_names = resp.get("filenames", [resp.get("filename", file_names)])
+    fail_names = resp.get("failed_filenames", [])
+    total_chars = resp.get("total_char_count", resp.get("char_count", 0))
+
+    msg = f"✅ Ingested **{len(ok_names)}** file(s) ({total_chars:,} characters)"
+    if fail_names:
+        msg += f"\n⚠️ Could not ingest: {', '.join(fail_names)}"
+
+    st.success(msg)
+    st.rerun()

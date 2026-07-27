@@ -29,7 +29,7 @@ SLIDE COUNT: {num_slides} slides — YOU MUST GENERATE EXACTLY {num_slides} slid
 Audience: {audience}
 Tone: {tone}
 Focus: {focus}
-
+{context_block}
 USER INSTRUCTION (this is what the user wants — let it guide how you structure the outline):
 {user_prompt}
 
@@ -100,7 +100,7 @@ Tone:
 
 User instruction (what the user asked for — honour this in tone, angle and framing):
 {user_prompt}
-
+{context_block}
 
 Slide information:
 

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from backend.app.services.llm.client import llm_client
 from backend.app.services.llm.prompts import OUTLINE_SYSTEM, OUTLINE_USER
 from backend.app.schemas.generation import OutlineResponse, OutlineItem
@@ -6,6 +6,35 @@ from backend.app.utils.logger import logger
 
 
 MAX_CONTENT_CHARS = 6000  # Trim content to stay within context window
+
+
+def _build_context_block(
+    domain: Optional[str] = None,
+    division: Optional[str] = None,
+    output_type: Optional[str] = None,
+    compliance_frameworks: Optional[List[str]] = None,
+    preferred_file_type: Optional[str] = None,
+) -> str:
+    """Build a formatted context block string for the LLM prompt.
+
+    Returns an empty string if no context fields are provided, so the
+    prompt template handles absence cleanly.
+    """
+    lines = []
+    if domain:
+        lines.append(f"Domain: {domain}")
+    if division:
+        lines.append(f"Division: {division}")
+    if output_type:
+        lines.append(f"Output type: {output_type}")
+    if preferred_file_type:
+        lines.append(f"Preferred file type/format: {preferred_file_type}")
+    if compliance_frameworks:
+        lines.append(f"Compliance requirements: {', '.join(compliance_frameworks)}")
+
+    if not lines:
+        return ""
+    return "\nOrganisational context (align your outline to these):\n" + "\n".join(lines) + "\n"
 
 
 async def generate_outline(
@@ -16,6 +45,11 @@ async def generate_outline(
     focus: str = "key insights",
     user_prompt: str = "",
     session_id: str = "",
+    domain: Optional[str] = None,
+    division: Optional[str] = None,
+    output_type: Optional[str] = None,
+    compliance_frameworks: Optional[List[str]] = None,
+    preferred_file_type: Optional[str] = None,
 ) -> OutlineResponse:
     """Generate a structured slide outline from source content."""
 
@@ -28,6 +62,9 @@ async def generate_outline(
     effective_prompt = user_prompt.strip() if user_prompt and user_prompt.strip() else \
         "Summarise the source document into a clear, professional presentation."
 
+    context_block = _build_context_block(domain, division, output_type, compliance_frameworks, preferred_file_type)
+
+
     user_msg = OUTLINE_USER.format_map({
         "num_slides": num_slides,
         "audience": audience or "general audience",
@@ -35,6 +72,7 @@ async def generate_outline(
         "focus": focus or "key insights and findings",
         "user_prompt": effective_prompt,
         "content": trimmed,
+        "context_block": context_block,
     })
 
     for attempt in range(1, 3):  # try up to 2 times
@@ -71,3 +109,4 @@ async def generate_outline(
         outline=outline_items,
         total_slides=len(outline_items),
     )
+

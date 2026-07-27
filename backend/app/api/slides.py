@@ -15,6 +15,10 @@ async def edit_slide_endpoint(
     pres_store: dict = Depends(get_presentation_store),
 ):
     """Edit a single slide using a natural language instruction."""
+    print("========== EDIT SLIDE REQUEST ==========")
+    print(req.model_dump_json(indent=2))
+    print("========================================")
+
     pres = pres_store.get(req.session_id)
     if not pres:
         raise HTTPException(404, f"Session {req.session_id} not found.")
@@ -35,7 +39,12 @@ async def edit_slide_endpoint(
             break
 
     presentation_store.set(req.session_id, pres)
+
+    print("========== EDITED SLIDE RESPONSE ==========")
+    print(updated.model_dump_json(indent=2))
+    print("===========================================")
     return updated
+
 
 
 @router.put("/{session_id}/{slide_number}", response_model=SlideContent)
